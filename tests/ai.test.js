@@ -14,6 +14,22 @@ export function run() {
   assert.strictEqual(evaluatePlay(hint).type, 'pair');
   assert.strictEqual(canBeat(hint, targetPair), true);
 
+  const targetStraight = evaluatePlay(cardsFromRanks(['3', '4', '5', '6', '7']));
+  const straightHint = findHint(cardsFromRanks(['4', '5', '6', '7', '8']), targetStraight);
+  assert(straightHint, 'hint exists for beatable straight');
+  assert.strictEqual(evaluatePlay(straightHint).type, 'straight');
+  assert.strictEqual(canBeat(straightHint, targetStraight), true);
+
+  const straightResponse = choosePlay(cardsFromRanks(['4', '5', '6', '7', '8']), targetStraight);
+  assert.strictEqual(straightResponse.pass, false, 'AI responds to beatable straight');
+  assert.strictEqual(canBeat(straightResponse.cards, targetStraight), true);
+
+  const targetTripleSingle = evaluatePlay(cardsFromRanks(['3', '3', '3', '8']));
+  const tripleSingleHint = findHint(cardsFromRanks(['4', '4', '4', '9']), targetTripleSingle);
+  assert(tripleSingleHint, 'hint exists for beatable triple-with-single');
+  assert.strictEqual(evaluatePlay(tripleSingleHint).type, 'tripleSingle');
+  assert.strictEqual(canBeat(tripleSingleHint, targetTripleSingle), true);
+
   const noAnswer = findHint(cardsFromRanks(['3', '4', '5']), evaluatePlay(cardsFromRanks(['A', 'A'])));
   assert.strictEqual(noAnswer, null, 'hint returns null when no legal response exists');
 

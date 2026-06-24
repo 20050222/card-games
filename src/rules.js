@@ -75,7 +75,8 @@ function evaluateAirplane(cards, groups) {
   const nonTripleGroups = groups.filter((group) => group.count !== 3);
   if (
     cards.length === tripleGroups.length * 4
-    && nonTripleGroups.reduce((total, group) => total + group.count, 0) === tripleGroups.length
+    && nonTripleGroups.length === tripleGroups.length
+    && nonTripleGroups.every((group) => group.count === 1)
   ) {
     return makePlay('airplaneSingles', cards, mainGroup, { sequenceLength: tripleGroups.length });
   }
@@ -101,11 +102,11 @@ function evaluateFourWithTwo(cards, groups) {
     return makePlay('bomb', cards, fourGroup);
   }
 
-  if (cards.length === 6) {
+  const sideGroups = groups.filter((group) => group.rank !== fourGroup.rank);
+  if (cards.length === 6 && sideGroups.length === 2 && sideGroups.every((group) => group.count === 1)) {
     return makePlay('fourTwoSingles', cards, fourGroup);
   }
 
-  const sideGroups = groups.filter((group) => group.rank !== fourGroup.rank);
   if (cards.length === 8 && sideGroups.length === 2 && sideGroups.every((group) => group.count === 2)) {
     return makePlay('fourTwoPairs', cards, fourGroup);
   }

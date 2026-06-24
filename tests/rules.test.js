@@ -21,6 +21,8 @@ export function run() {
   assert.strictEqual(evaluatePlay(cardsFromRanks(['3', '4', '5', '6', '2'])), null, 'straight cannot include 2');
   assert.strictEqual(evaluatePlay(cardsFromRanks(['3', '3', '4', '4'])), null, 'two pairs are not consecutive pairs');
   assert.strictEqual(evaluatePlay(cardsFromRanks(['3', '3', '3', '4', '4', '5'])), null, 'invalid mixed selection is rejected');
+  assert.strictEqual(evaluatePlay(cardsFromRanks(['8', '8', '8', '9', '9', '9', '3', '3'])), null, 'airplane single wings cannot be a pair');
+  assert.strictEqual(evaluatePlay(cardsFromRanks(['Q', 'Q', 'Q', 'Q', '3', '3'])), null, 'four with two singles cannot use a pair');
 
   assert.strictEqual(canBeat(cardsFromRanks(['4']), cardsFromRanks(['3'])), true, 'higher single beats lower single');
   assert.strictEqual(canBeat(cardsFromRanks(['4', '4']), cardsFromRanks(['3', '3'])), true, 'higher pair beats lower pair');

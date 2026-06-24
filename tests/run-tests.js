@@ -1,21 +1,18 @@
 import fs from 'fs';
 import path from 'path';
-import { pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const testDir = path.dirname(new URL(import.meta.url).pathname);
-const normalizedTestDir = process.platform === 'win32' && testDir.startsWith('/')
-  ? testDir.slice(1)
-  : testDir;
+const testDir = path.dirname(fileURLToPath(import.meta.url));
 
 const testFiles = fs
-  .readdirSync(normalizedTestDir)
+  .readdirSync(testDir)
   .filter((file) => file.endsWith('.test.js'))
   .sort();
 
 let passed = 0;
 
 for (const file of testFiles) {
-  const fullPath = path.join(normalizedTestDir, file);
+  const fullPath = path.join(testDir, file);
   try {
     const module = await import(pathToFileURL(fullPath).href);
     module.run();

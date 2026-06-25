@@ -8,13 +8,25 @@ import {
 } from '../src/game.js';
 import { cardsFromRanks } from './test-utils.js';
 
+function cardIds(cards) {
+  return cards.map((card) => card.id);
+}
+
+function dealSnapshot(game) {
+  return {
+    hands: game.seats.map((seat) => cardIds(seat.hand)),
+    bottomCards: cardIds(game.bottomCards),
+  };
+}
+
 export function run() {
-  const game = createGame({ deck: cardsFromRanks([
+  const deck = cardsFromRanks([
     '3','3','3','3','4','4','4','4','5','5','5','5','6','6','6','6','7',
     '7','7','7','8','8','8','8','9','9','9','9','10','10','10','10','J','J',
     'J','J','Q','Q','Q','Q','K','K','K','K','A','A','A','A','2','2','2',
     'SJ','BJ','2'
-  ]) });
+  ]);
+  const game = createGame({ deck });
 
   assert.strictEqual(game.phase, 'bidding');
   assert.deepStrictEqual(game.seats.map((seat) => seat.hand.length), [17, 17, 17]);
@@ -26,6 +38,27 @@ export function run() {
   assert.strictEqual(landlordGame.activeSeat, 0);
   assert.strictEqual(landlordGame.seats[0].hand.length, 20);
 
+  const unownedPlay = playCards(landlordGame, 0, [landlordGame.seats[1].hand[0]]);
+  assert.strictEqual(unownedPlay.activeSeat, 0);
+  assert.strictEqual(unownedPlay.seats[0].hand.length, 20);
+  assert.strictEqual(unownedPlay.lastPlay, null);
+  assert.match(unownedPlay.message, /手牌|not in hand/i);
+
+  const oneOwnedCard = landlordGame.seats[0].hand[0];
+  const duplicatePlay = playCards(landlordGame, 0, [oneOwnedCard, oneOwnedCard]);
+  assert.strictEqual(duplicatePlay.activeSeat, 0);
+  assert.strictEqual(duplicatePlay.seats[0].hand.length, 20);
+  assert.strictEqual(duplicatePlay.lastPlay, null);
+  assert.match(duplicatePlay.message, /手牌|not in hand/i);
+
+  const allPassStart = createGame({ deck });
+  const allPassOne = bid(allPassStart, 0, false);
+  const allPassTwo = bid(allPassOne, 1, false);
+  const allPassRedeal = bid(allPassTwo, 2, false);
+  assert.match(allPassRedeal.message, /所有|everyone|passed/i);
+  assert.match(allPassRedeal.message, /重新发牌|redealt/i);
+  assert.deepStrictEqual(dealSnapshot(allPassRedeal), dealSnapshot(allPassStart));
+
   const firstPlayCards = selectCardsByRanks(landlordGame.seats[0].hand, ['2']);
   const afterPlay = playCards(landlordGame, 0, firstPlayCards);
   assert.strictEqual(afterPlay.seats[0].hand.length, 19);
@@ -35,6 +68,7 @@ export function run() {
   const afterPassOne = passTurn(afterPlay, 1);
   assert.strictEqual(afterPassOne.passCount, 1);
   assert.strictEqual(afterPassOne.activeSeat, 2);
+  assert.notStrictEqual(afterPassOne.lastPlay.cards, afterPlay.lastPlay.cards);
 
   const afterPassTwo = passTurn(afterPassOne, 2);
   assert.strictEqual(afterPassTwo.passCount, 0, 'two passes clear trick pass count');

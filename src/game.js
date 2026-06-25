@@ -11,6 +11,25 @@ function nextSeat(index) {
   return (index + 1) % 3;
 }
 
+function createDealOptions(options) {
+  return {
+    ...(options.deck ? { deck: options.deck } : {}),
+    ...(options.rng ? { rng: options.rng } : {}),
+  };
+}
+
+function areCardsInHand(hand, cards) {
+  const handIds = new Set(hand.map((card) => card.id));
+  const selectedIds = new Set();
+  return cards.every((card) => {
+    if (!card || !handIds.has(card.id) || selectedIds.has(card.id)) {
+      return false;
+    }
+    selectedIds.add(card.id);
+    return true;
+  });
+}
+
 function cloneState(state) {
   return {
     ...state,
@@ -18,6 +37,10 @@ function cloneState(state) {
     bottomCards: state.bottomCards.slice(),
     bids: state.bids.slice(),
     selectedIds: state.selectedIds.slice(),
+    dealOptions: { ...(state.dealOptions || {}) },
+    lastPlay: state.lastPlay
+      ? { ...state.lastPlay, cards: state.lastPlay.cards.slice() }
+      : null,
   };
 }
 
@@ -36,6 +59,7 @@ export function createGame(options = {}) {
     activeSeat: 0,
     bids: [],
     bidPasses: 0,
+    dealOptions: createDealOptions(options),
     lastPlay: null,
     passCount: 0,
     selectedIds: [],
@@ -67,7 +91,8 @@ export function bid(state, seatIndex, wantsLandlord) {
   next.bids.push({ seatIndex, wantsLandlord: false });
   next.bidPasses += 1;
   if (next.bidPasses >= 3) {
-    return createGame();
+    const redeal = createGame(next.dealOptions);
+    return { ...redeal, message: '\u6240\u6709\u73a9\u5bb6\u4e0d\u53eb\uff0c\u91cd\u65b0\u53d1\u724c' };
   }
   next.activeSeat = nextSeat(seatIndex);
   next.message = `${next.seats[seatIndex].name} \u4e0d\u53eb`;
@@ -93,6 +118,9 @@ export function selectCardsByRanks(hand, ranks) {
 export function playCards(state, seatIndex, cards) {
   if (state.phase !== 'playing' || state.activeSeat !== seatIndex) {
     return { ...state, message: '\u8fd8\u6ca1\u6709\u8f6e\u5230\u8be5\u73a9\u5bb6\u51fa\u724c' };
+  }
+  if (Array.isArray(cards) && !areCardsInHand(state.seats[seatIndex].hand, cards)) {
+    return { ...state, message: '\u6240\u9009\u724c\u4e0d\u5728\u5f53\u524d\u73a9\u5bb6\u624b\u724c\u4e2d' };
   }
 
   const play = evaluatePlay(cards);

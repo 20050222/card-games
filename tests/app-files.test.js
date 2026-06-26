@@ -16,4 +16,8 @@ export function run() {
 
   const browserApp = fs.readFileSync('src/browser-app.js', 'utf8');
   assert(browserApp.includes('startGame'), 'browser bundle starts the game');
+  assert(browserApp.includes('AudioContext'), 'browser bundle uses Web Audio for sound effects');
+  assert(browserApp.includes('playSound'), 'browser bundle exposes sound playback helpers');
+  assert(browserApp.includes('toggleSound'), 'browser bundle supports muting sound');
+  assert(html.includes('soundToggleButton'), 'index exposes a sound toggle button');
 }

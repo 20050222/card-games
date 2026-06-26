@@ -41,6 +41,13 @@ button {
   color: #d9e0d4;
 }
 
+.top-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .card-table {
   position: relative;
   min-height: calc(100vh - 86px);
@@ -238,6 +245,10 @@ button {
   .scorebar {
     align-items: flex-start;
     padding: 14px;
+  }
+
+  .top-actions {
+    justify-content: flex-start;
   }
 
   .scorebar h1 {

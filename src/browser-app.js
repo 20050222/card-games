@@ -12,6 +12,8 @@
 
   let state = createGame();
   let aiTurnToken = 0;
+  let soundEnabled = true;
+  let audioContext = null;
 
   function createDeck() {
     const cards = [];
@@ -65,6 +67,63 @@
     if (card.rank === 'SJ') return '\u5c0f\u738b';
     if (card.rank === 'BJ') return '\u5927\u738b';
     return `${card.rank}${card.suit}`;
+  }
+
+  function getAudioContext() {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return null;
+    if (!audioContext) audioContext = new AudioContextCtor();
+    if (audioContext.state === 'suspended' && typeof audioContext.resume === 'function') {
+      const resumePromise = audioContext.resume();
+      if (resumePromise && typeof resumePromise.catch === 'function') resumePromise.catch(() => {});
+    }
+    return audioContext;
+  }
+
+  function playTone(frequency, duration, type = 'sine', volume = 0.045, delay = 0) {
+    const context = getAudioContext();
+    if (!context) return;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const startAt = context.currentTime + delay;
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, startAt);
+    gain.gain.setValueAtTime(volume, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(startAt);
+    oscillator.stop(startAt + duration);
+  }
+
+  function playSound(name) {
+    if (!soundEnabled) return;
+    const patterns = {
+      bid: [[523, 0.08, 'triangle', 0.05], [659, 0.09, 'triangle', 0.045]],
+      pass: [[247, 0.09, 'sine', 0.04]],
+      play: [[392, 0.06, 'square', 0.035], [523, 0.07, 'square', 0.03]],
+      hint: [[784, 0.05, 'sine', 0.035]],
+      win: [[523, 0.08, 'triangle', 0.05], [659, 0.08, 'triangle', 0.05], [784, 0.12, 'triangle', 0.05]],
+      new: [[330, 0.08, 'sine', 0.04], [440, 0.08, 'sine', 0.04]],
+    };
+    const pattern = patterns[name] || patterns.hint;
+    pattern.forEach(([frequency, duration, type, volume], index) => {
+      playTone(frequency, duration, type, volume, index * 0.075);
+    });
+  }
+
+  function updateSoundButton() {
+    const button = document.querySelector('#soundToggleButton');
+    if (!button) return;
+    button.textContent = soundEnabled ? '\u58f0\u97f3' : '\u9759\u97f3';
+    button.setAttribute('aria-pressed', soundEnabled ? 'false' : 'true');
+    button.title = soundEnabled ? '\u5173\u95ed\u58f0\u97f3' : '\u6253\u5f00\u58f0\u97f3';
+  }
+
+  function toggleSound() {
+    soundEnabled = !soundEnabled;
+    updateSoundButton();
+    if (soundEnabled) playSound('hint');
   }
 
   function removeCards(hand, cardsToRemove) {
@@ -681,16 +740,27 @@
   }
 
   function playSelected() {
-    setState(playCards(state, 0, selectCardsByIds(state.seats[0].hand, state.selectedIds)));
+    const nextState = playCards(state, 0, selectCardsByIds(state.seats[0].hand, state.selectedIds));
+    if (nextState.phase === 'gameOver' && state.phase !== 'gameOver') {
+      playSound('win');
+    } else if (nextState.lastPlay !== state.lastPlay) {
+      playSound('play');
+    }
+    setState(nextState);
   }
 
   function passSelected() {
-    setState(passTurn(state, 0));
+    const nextState = passTurn(state, 0);
+    if (nextState.activeSeat !== state.activeSeat || nextState.passCount !== state.passCount) {
+      playSound('pass');
+    }
+    setState(nextState);
   }
 
   function hint() {
     const target = state.lastPlay ? state.lastPlay.play : null;
     const cards = findHint(state.seats[0].hand, target);
+    playSound(cards ? 'hint' : 'pass');
     state = {
       ...state,
       selectedIds: cards ? cards.map((card) => card.id) : [],
@@ -700,6 +770,7 @@
   }
 
   function newRound() {
+    playSound('new');
     aiTurnToken += 1;
     setState(createGame());
   }
@@ -711,7 +782,9 @@
       window.setTimeout(() => {
         if (token !== aiTurnToken || state.phase !== 'bidding' || state.activeSeat === 0) return;
         const seat = state.activeSeat;
-        setState(bid(state, seat, chooseBid(state.seats[seat].hand)));
+        const wantsLandlord = chooseBid(state.seats[seat].hand);
+        playSound(wantsLandlord ? 'bid' : 'pass');
+        setState(bid(state, seat, wantsLandlord));
       }, 500);
     }
     if (state.phase === 'playing' && state.activeSeat !== 0) {
@@ -720,21 +793,33 @@
         const seat = state.activeSeat;
         const target = state.lastPlay ? state.lastPlay.play : null;
         const decision = choosePlay(state.seats[seat].hand, target);
-        setState(decision.pass ? passTurn(state, seat) : playCards(state, seat, decision.cards));
+        const nextState = decision.pass ? passTurn(state, seat) : playCards(state, seat, decision.cards);
+        let soundName = decision.pass ? 'pass' : 'play';
+        if (nextState.phase === 'gameOver' && state.phase !== 'gameOver') soundName = 'win';
+        playSound(soundName);
+        setState(nextState);
       }, 700);
     }
   }
 
   const handlers = {
-    onBidCall: () => setState(bid(state, 0, true)),
-    onBidPass: () => setState(bid(state, 0, false)),
+    onBidCall: () => {
+      playSound('bid');
+      setState(bid(state, 0, true));
+    },
+    onBidPass: () => {
+      playSound('pass');
+      setState(bid(state, 0, false));
+    },
     onPlay: playSelected,
     onPass: passSelected,
     onHint: hint,
     onNewRound: newRound,
   };
 
+  document.querySelector('#soundToggleButton').addEventListener('click', toggleSound);
   document.querySelector('#newRoundButton').addEventListener('click', newRound);
+  updateSoundButton();
   renderGame(state);
   queueAiTurn();
 }());

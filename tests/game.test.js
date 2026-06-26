@@ -31,12 +31,34 @@ export function run() {
   assert.strictEqual(game.phase, 'bidding');
   assert.deepStrictEqual(game.seats.map((seat) => seat.hand.length), [17, 17, 17]);
   assert.strictEqual(game.bottomCards.length, 3);
+  assert.strictEqual(game.bottomRevealed, false, 'bottom cards stay hidden during bidding');
 
-  const landlordGame = bid(game, 0, true);
+  const firstCaller = bid(game, 0, true);
+  assert.strictEqual(firstCaller.phase, 'bidding', 'calling landlord starts robbing instead of confirming immediately');
+  assert.strictEqual(firstCaller.landlord, null);
+  assert.strictEqual(firstCaller.landlordCandidate, 0);
+  assert.strictEqual(firstCaller.activeSeat, 1);
+  assert.strictEqual(firstCaller.seats[0].hand.length, 17);
+  assert.strictEqual(firstCaller.bottomRevealed, false);
+
+  const afterFirstRobPass = bid(firstCaller, 1, false);
+  assert.strictEqual(afterFirstRobPass.phase, 'bidding');
+  assert.strictEqual(afterFirstRobPass.landlordCandidate, 0);
+  assert.strictEqual(afterFirstRobPass.activeSeat, 2);
+
+  const landlordGame = bid(afterFirstRobPass, 2, false);
   assert.strictEqual(landlordGame.phase, 'playing');
   assert.strictEqual(landlordGame.landlord, 0);
   assert.strictEqual(landlordGame.activeSeat, 0);
   assert.strictEqual(landlordGame.seats[0].hand.length, 20);
+  assert.strictEqual(landlordGame.bottomRevealed, true, 'bottom cards reveal after landlord is confirmed');
+
+  const robStart = bid(game, 0, true);
+  const robbed = bid(robStart, 1, true);
+  const robbedFinal = bid(robbed, 2, false);
+  assert.strictEqual(robbedFinal.phase, 'playing');
+  assert.strictEqual(robbedFinal.landlord, 1, 'AI can rob landlord from the first caller');
+  assert.strictEqual(robbedFinal.seats[1].hand.length, 20);
 
   const unownedPlay = playCards(landlordGame, 0, [landlordGame.seats[1].hand[0]]);
   assert.strictEqual(unownedPlay.activeSeat, 0);

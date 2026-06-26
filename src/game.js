@@ -55,10 +55,13 @@ export function createGame(options = {}) {
       role: 'farmer',
     })),
     bottomCards: deal.bottomCards,
+    bottomRevealed: false,
     landlord: null,
+    landlordCandidate: null,
     activeSeat: 0,
     bids: [],
     bidPasses: 0,
+    biddingTurns: 0,
     dealOptions: createDealOptions(options),
     lastPlay: null,
     passCount: 0,
@@ -68,34 +71,61 @@ export function createGame(options = {}) {
   };
 }
 
+function finalizeLandlord(state, landlordIndex) {
+  const next = cloneState(state);
+  next.phase = 'playing';
+  next.landlord = landlordIndex;
+  next.landlordCandidate = landlordIndex;
+  next.activeSeat = landlordIndex;
+  next.bottomRevealed = true;
+  next.seats = next.seats.map((seat, index) => ({
+    ...seat,
+    role: index === landlordIndex ? 'landlord' : 'farmer',
+    hand: index === landlordIndex ? sortCards(seat.hand.concat(next.bottomCards)) : seat.hand,
+  }));
+  next.message = `${next.seats[landlordIndex].name} \u6210\u4e3a\u5730\u4e3b`;
+  return next;
+}
+
 export function bid(state, seatIndex, wantsLandlord) {
   if (state.phase !== 'bidding' || state.activeSeat !== seatIndex) {
     return { ...state, message: '\u8fd8\u6ca1\u6709\u8f6e\u5230\u8be5\u73a9\u5bb6\u53eb\u5730\u4e3b' };
   }
 
+  const next = cloneState(state);
+  const isRobbing = next.landlordCandidate !== null;
+  const action = isRobbing
+    ? wantsLandlord ? 'rob' : 'passRob'
+    : wantsLandlord ? 'call' : 'passCall';
+
+  next.bids.push({ seatIndex, wantsLandlord, action });
+  next.biddingTurns += 1;
+
   if (wantsLandlord) {
-    const next = cloneState(state);
-    next.phase = 'playing';
-    next.landlord = seatIndex;
-    next.activeSeat = seatIndex;
-    next.seats = next.seats.map((seat, index) => ({
-      ...seat,
-      role: index === seatIndex ? 'landlord' : 'farmer',
-      hand: index === seatIndex ? sortCards(seat.hand.concat(next.bottomCards)) : seat.hand,
-    }));
-    next.message = `${next.seats[seatIndex].name} \u6210\u4e3a\u5730\u4e3b`;
-    return next;
+    next.landlordCandidate = seatIndex;
+  } else if (!isRobbing) {
+    next.bidPasses += 1;
   }
 
-  const next = cloneState(state);
-  next.bids.push({ seatIndex, wantsLandlord: false });
-  next.bidPasses += 1;
-  if (next.bidPasses >= 3) {
+  if (next.landlordCandidate === null && next.biddingTurns >= 3) {
     const redeal = createGame(next.dealOptions);
     return { ...redeal, message: '\u6240\u6709\u73a9\u5bb6\u4e0d\u53eb\uff0c\u91cd\u65b0\u53d1\u724c' };
   }
+
+  if (next.landlordCandidate !== null && next.biddingTurns >= 3) {
+    return finalizeLandlord(next, next.landlordCandidate);
+  }
+
   next.activeSeat = nextSeat(seatIndex);
-  next.message = `${next.seats[seatIndex].name} \u4e0d\u53eb`;
+  if (wantsLandlord) {
+    next.message = isRobbing
+      ? `${next.seats[seatIndex].name} \u62a2\u5730\u4e3b`
+      : `${next.seats[seatIndex].name} \u53eb\u5730\u4e3b\uff0c\u5176\u4ed6\u73a9\u5bb6\u53ef\u4ee5\u62a2\u5730\u4e3b`;
+  } else {
+    next.message = isRobbing
+      ? `${next.seats[seatIndex].name} \u4e0d\u62a2`
+      : `${next.seats[seatIndex].name} \u4e0d\u53eb`;
+  }
   return next;
 }
 

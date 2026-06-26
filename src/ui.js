@@ -42,8 +42,9 @@ function renderActions(state, handlers) {
   bar.className = 'action-bar';
 
   if (state.phase === 'bidding' && state.activeSeat === 0) {
-    const callButton = actionButton('\u53eb\u5730\u4e3b', handlers.onBidCall);
-    const passButton = actionButton('\u4e0d\u53eb', handlers.onBidPass, 'secondary');
+    const hasCandidate = state.landlordCandidate !== null;
+    const callButton = actionButton(hasCandidate ? '\u62a2\u5730\u4e3b' : '\u53eb\u5730\u4e3b', handlers.onBidCall);
+    const passButton = actionButton(hasCandidate ? '\u4e0d\u62a2' : '\u4e0d\u53eb', handlers.onBidPass, 'secondary');
     bar.append(callButton, passButton);
     return bar;
   }
@@ -108,8 +109,16 @@ function renderBottomCards(state) {
 
   const row = document.createElement('div');
   row.className = 'bottom-card-row';
-  for (const card of state.bottomCards) {
-    row.append(renderCard(card, new Set(), () => {}, false));
+  if (state.bottomRevealed) {
+    for (const card of state.bottomCards) {
+      row.append(renderCard(card, new Set(), () => {}, false));
+    }
+  } else {
+    for (let index = 0; index < state.bottomCards.length; index += 1) {
+      const card = document.createElement('div');
+      card.className = 'card-back';
+      row.append(card);
+    }
   }
   wrapper.append(row);
   return wrapper;

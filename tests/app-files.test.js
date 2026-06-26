@@ -19,5 +19,9 @@ export function run() {
   assert(browserApp.includes('AudioContext'), 'browser bundle uses Web Audio for sound effects');
   assert(browserApp.includes('playSound'), 'browser bundle exposes sound playback helpers');
   assert(browserApp.includes('toggleSound'), 'browser bundle supports muting sound');
+  assert(browserApp.includes('playSoundForPlay'), 'browser bundle maps legal plays to named voice-like sound effects');
+  assert(browserApp.includes('bomb'), 'browser bundle includes bomb sound cues');
+  assert(browserApp.includes('triple'), 'browser bundle includes triple sound cues');
+  assert(browserApp.includes('\\u62a2\\u5730\\u4e3b'), 'browser bundle exposes rob landlord action text');
   assert(html.includes('soundToggleButton'), 'index exposes a sound toggle button');
 }

@@ -69,6 +69,49 @@
     return `${card.rank}${card.suit}`;
   }
 
+  function getRankVoice(rank) {
+    const names = {
+      '3': '\u4e09',
+      '4': '\u56db',
+      '5': '\u4e94',
+      '6': '\u516d',
+      '7': '\u4e03',
+      '8': '\u516b',
+      '9': '\u4e5d',
+      '10': '\u5341',
+      J: 'J',
+      Q: 'Q',
+      K: 'K',
+      A: 'A',
+      '2': '\u4e8c',
+      SJ: '\u5c0f\u738b',
+      BJ: '\u5927\u738b',
+    };
+    return names[rank] || rank;
+  }
+
+  function describePlay(play) {
+    if (!play) return '';
+    const rank = getRankVoice(play.mainRank);
+    const names = {
+      single: `\u4e00\u5f20${rank}`,
+      pair: `\u4e00\u5bf9${rank}`,
+      triple: `\u4e09\u5f20${rank}`,
+      tripleSingle: '\u4e09\u5e26\u4e00',
+      triplePair: '\u4e09\u5e26\u4e00\u5bf9',
+      straight: '\u987a\u5b50',
+      consecutivePairs: '\u8fde\u5bf9',
+      airplane: '\u98de\u673a',
+      airplaneSingles: '\u98de\u673a\u5e26\u7fc5\u8180',
+      airplanePairs: '\u98de\u673a\u5e26\u5bf9',
+      bomb: '\u70b8\u5f39',
+      rocket: '\u738b\u70b8',
+      fourTwoSingles: '\u56db\u5e26\u4e8c',
+      fourTwoPairs: '\u56db\u5e26\u4e24\u5bf9',
+    };
+    return names[play.type] || '\u51fa\u724c';
+  }
+
   function getAudioContext() {
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextCtor) return null;
@@ -96,12 +139,47 @@
     oscillator.stop(startAt + duration);
   }
 
-  function playSound(name) {
+  function speakCue(text) {
+    if (
+      !soundEnabled
+      || !text
+      || !window.speechSynthesis
+      || typeof window.speechSynthesis.speak !== 'function'
+      || !window.SpeechSynthesisUtterance
+    ) return;
+    const utterance = new window.SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    utterance.rate = 1.08;
+    utterance.pitch = 1;
+    if (typeof window.speechSynthesis.cancel === 'function') window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function playSound(name, cueText = '') {
     if (!soundEnabled) return;
+    speakCue(cueText);
     const patterns = {
+      call: [[523, 0.08, 'triangle', 0.05], [659, 0.09, 'triangle', 0.045]],
+      rob: [[659, 0.07, 'triangle', 0.05], [784, 0.1, 'triangle', 0.05]],
+      passBid: [[247, 0.09, 'sine', 0.04]],
+      passRob: [[220, 0.09, 'sine', 0.04]],
       bid: [[523, 0.08, 'triangle', 0.05], [659, 0.09, 'triangle', 0.045]],
       pass: [[247, 0.09, 'sine', 0.04]],
       play: [[392, 0.06, 'square', 0.035], [523, 0.07, 'square', 0.03]],
+      single: [[392, 0.05, 'sine', 0.035]],
+      pair: [[392, 0.05, 'sine', 0.035], [392, 0.05, 'sine', 0.03]],
+      triple: [[392, 0.05, 'triangle', 0.035], [392, 0.05, 'triangle', 0.035], [392, 0.05, 'triangle', 0.035]],
+      bomb: [[196, 0.08, 'square', 0.05], [98, 0.16, 'square', 0.055]],
+      rocket: [[784, 0.08, 'sawtooth', 0.04], [988, 0.14, 'sawtooth', 0.045]],
+      straight: [[440, 0.045, 'sine', 0.03], [494, 0.045, 'sine', 0.03], [554, 0.06, 'sine', 0.03]],
+      consecutivePairs: [[330, 0.05, 'triangle', 0.032], [392, 0.05, 'triangle', 0.032], [494, 0.06, 'triangle', 0.032]],
+      tripleSingle: [[392, 0.05, 'triangle', 0.034], [392, 0.05, 'triangle', 0.034], [523, 0.07, 'sine', 0.03]],
+      triplePair: [[392, 0.05, 'triangle', 0.034], [392, 0.05, 'triangle', 0.034], [523, 0.05, 'sine', 0.03], [523, 0.06, 'sine', 0.03]],
+      airplane: [[523, 0.05, 'sine', 0.03], [659, 0.05, 'sine', 0.03], [784, 0.08, 'sine', 0.03]],
+      airplaneSingles: [[523, 0.05, 'sine', 0.03], [659, 0.05, 'sine', 0.03], [784, 0.08, 'sine', 0.03]],
+      airplanePairs: [[523, 0.05, 'sine', 0.03], [659, 0.05, 'sine', 0.03], [784, 0.08, 'sine', 0.03]],
+      fourTwoSingles: [[220, 0.06, 'square', 0.035], [330, 0.06, 'square', 0.035], [440, 0.06, 'square', 0.035]],
+      fourTwoPairs: [[220, 0.06, 'square', 0.035], [330, 0.06, 'square', 0.035], [440, 0.06, 'square', 0.035]],
       hint: [[784, 0.05, 'sine', 0.035]],
       win: [[523, 0.08, 'triangle', 0.05], [659, 0.08, 'triangle', 0.05], [784, 0.12, 'triangle', 0.05]],
       new: [[330, 0.08, 'sine', 0.04], [440, 0.08, 'sine', 0.04]],
@@ -110,6 +188,11 @@
     pattern.forEach(([frequency, duration, type, volume], index) => {
       playTone(frequency, duration, type, volume, index * 0.075);
     });
+  }
+
+  function playSoundForPlay(play) {
+    if (!play) return;
+    playSound(play.type, describePlay(play));
   }
 
   function updateSoundButton() {
@@ -123,7 +206,7 @@
   function toggleSound() {
     soundEnabled = !soundEnabled;
     updateSoundButton();
-    if (soundEnabled) playSound('hint');
+    if (soundEnabled) playSound('hint', '\u63d0\u793a');
   }
 
   function removeCards(hand, cardsToRemove) {
@@ -489,10 +572,13 @@
       phase: 'bidding',
       seats: SEATS.map((seat, index) => ({ ...seat, hand: deal.hands[index], role: 'farmer' })),
       bottomCards: deal.bottomCards,
+      bottomRevealed: false,
       landlord: null,
+      landlordCandidate: null,
       activeSeat: 0,
       bids: [],
       bidPasses: 0,
+      biddingTurns: 0,
       dealOptions: createDealOptions(options),
       lastPlay: null,
       passCount: 0,
@@ -502,31 +588,59 @@
     };
   }
 
+  function finalizeLandlord(currentState, landlordIndex) {
+    const next = cloneState(currentState);
+    next.phase = 'playing';
+    next.landlord = landlordIndex;
+    next.landlordCandidate = landlordIndex;
+    next.activeSeat = landlordIndex;
+    next.bottomRevealed = true;
+    next.seats = next.seats.map((seat, index) => ({
+      ...seat,
+      role: index === landlordIndex ? 'landlord' : 'farmer',
+      hand: index === landlordIndex ? sortCards(seat.hand.concat(next.bottomCards)) : seat.hand,
+    }));
+    next.message = `${next.seats[landlordIndex].name} \u6210\u4e3a\u5730\u4e3b`;
+    return next;
+  }
+
   function bid(currentState, seatIndex, wantsLandlord) {
     if (currentState.phase !== 'bidding' || currentState.activeSeat !== seatIndex) {
       return { ...currentState, message: '\u8fd8\u6ca1\u6709\u8f6e\u5230\u8be5\u73a9\u5bb6\u53eb\u5730\u4e3b' };
     }
-    if (wantsLandlord) {
-      const next = cloneState(currentState);
-      next.phase = 'playing';
-      next.landlord = seatIndex;
-      next.activeSeat = seatIndex;
-      next.seats = next.seats.map((seat, index) => ({
-        ...seat,
-        role: index === seatIndex ? 'landlord' : 'farmer',
-        hand: index === seatIndex ? sortCards(seat.hand.concat(next.bottomCards)) : seat.hand,
-      }));
-      next.message = `${next.seats[seatIndex].name} \u6210\u4e3a\u5730\u4e3b`;
-      return next;
-    }
     const next = cloneState(currentState);
-    next.bids.push({ seatIndex, wantsLandlord: false });
-    next.bidPasses += 1;
-    if (next.bidPasses >= 3) {
+    const isRobbing = next.landlordCandidate !== null;
+    const action = isRobbing
+      ? wantsLandlord ? 'rob' : 'passRob'
+      : wantsLandlord ? 'call' : 'passCall';
+
+    next.bids.push({ seatIndex, wantsLandlord, action });
+    next.biddingTurns += 1;
+
+    if (wantsLandlord) {
+      next.landlordCandidate = seatIndex;
+    } else if (!isRobbing) {
+      next.bidPasses += 1;
+    }
+
+    if (next.landlordCandidate === null && next.biddingTurns >= 3) {
       return { ...createGame(next.dealOptions), message: '\u6240\u6709\u73a9\u5bb6\u4e0d\u53eb\uff0c\u91cd\u65b0\u53d1\u724c' };
     }
+
+    if (next.landlordCandidate !== null && next.biddingTurns >= 3) {
+      return finalizeLandlord(next, next.landlordCandidate);
+    }
+
     next.activeSeat = nextSeat(seatIndex);
-    next.message = `${next.seats[seatIndex].name} \u4e0d\u53eb`;
+    if (wantsLandlord) {
+      next.message = isRobbing
+        ? `${next.seats[seatIndex].name} \u62a2\u5730\u4e3b`
+        : `${next.seats[seatIndex].name} \u53eb\u5730\u4e3b\uff0c\u5176\u4ed6\u73a9\u5bb6\u53ef\u4ee5\u62a2\u5730\u4e3b`;
+    } else {
+      next.message = isRobbing
+        ? `${next.seats[seatIndex].name} \u4e0d\u62a2`
+        : `${next.seats[seatIndex].name} \u4e0d\u53eb`;
+    }
     return next;
   }
 
@@ -623,9 +737,10 @@
     const bar = document.createElement('div');
     bar.className = 'action-bar';
     if (currentState.phase === 'bidding' && currentState.activeSeat === 0) {
+      const hasCandidate = currentState.landlordCandidate !== null;
       bar.append(
-        actionButton('\u53eb\u5730\u4e3b', handlers.onBidCall),
-        actionButton('\u4e0d\u53eb', handlers.onBidPass, 'secondary'),
+        actionButton(hasCandidate ? '\u62a2\u5730\u4e3b' : '\u53eb\u5730\u4e3b', handlers.onBidCall),
+        actionButton(hasCandidate ? '\u4e0d\u62a2' : '\u4e0d\u53eb', handlers.onBidPass, 'secondary'),
       );
       return bar;
     }
@@ -683,8 +798,16 @@
     wrapper.append(title);
     const row = document.createElement('div');
     row.className = 'bottom-card-row';
-    for (const card of currentState.bottomCards) {
-      row.append(renderCard(card, new Set(), () => {}, false));
+    if (currentState.bottomRevealed) {
+      for (const card of currentState.bottomCards) {
+        row.append(renderCard(card, new Set(), () => {}, false));
+      }
+    } else {
+      for (let index = 0; index < currentState.bottomCards.length; index += 1) {
+        const card = document.createElement('div');
+        card.className = 'card-back';
+        row.append(card);
+      }
     }
     wrapper.append(row);
     return wrapper;
@@ -742,9 +865,9 @@
   function playSelected() {
     const nextState = playCards(state, 0, selectCardsByIds(state.seats[0].hand, state.selectedIds));
     if (nextState.phase === 'gameOver' && state.phase !== 'gameOver') {
-      playSound('win');
+      playSound('win', '\u80dc\u5229');
     } else if (nextState.lastPlay !== state.lastPlay) {
-      playSound('play');
+      playSoundForPlay(nextState.lastPlay.play);
     }
     setState(nextState);
   }
@@ -752,7 +875,7 @@
   function passSelected() {
     const nextState = passTurn(state, 0);
     if (nextState.activeSeat !== state.activeSeat || nextState.passCount !== state.passCount) {
-      playSound('pass');
+      playSound('pass', '\u4e0d\u8981');
     }
     setState(nextState);
   }
@@ -760,7 +883,7 @@
   function hint() {
     const target = state.lastPlay ? state.lastPlay.play : null;
     const cards = findHint(state.seats[0].hand, target);
-    playSound(cards ? 'hint' : 'pass');
+    playSound(cards ? 'hint' : 'pass', cards ? '\u63d0\u793a' : '\u4e0d\u8981');
     state = {
       ...state,
       selectedIds: cards ? cards.map((card) => card.id) : [],
@@ -770,9 +893,18 @@
   }
 
   function newRound() {
-    playSound('new');
+    playSound('new', '\u53d1\u724c');
     aiTurnToken += 1;
     setState(createGame());
+  }
+
+  function playBidSound(wantsLandlord, currentState = state) {
+    const isRobbing = currentState.landlordCandidate !== null;
+    if (wantsLandlord) {
+      playSound(isRobbing ? 'rob' : 'call', isRobbing ? '\u62a2\u5730\u4e3b' : '\u53eb\u5730\u4e3b');
+    } else {
+      playSound(isRobbing ? 'passRob' : 'passBid', isRobbing ? '\u4e0d\u62a2' : '\u4e0d\u53eb');
+    }
   }
 
   function queueAiTurn() {
@@ -783,7 +915,7 @@
         if (token !== aiTurnToken || state.phase !== 'bidding' || state.activeSeat === 0) return;
         const seat = state.activeSeat;
         const wantsLandlord = chooseBid(state.seats[seat].hand);
-        playSound(wantsLandlord ? 'bid' : 'pass');
+        playBidSound(wantsLandlord, state);
         setState(bid(state, seat, wantsLandlord));
       }, 500);
     }
@@ -794,9 +926,13 @@
         const target = state.lastPlay ? state.lastPlay.play : null;
         const decision = choosePlay(state.seats[seat].hand, target);
         const nextState = decision.pass ? passTurn(state, seat) : playCards(state, seat, decision.cards);
-        let soundName = decision.pass ? 'pass' : 'play';
-        if (nextState.phase === 'gameOver' && state.phase !== 'gameOver') soundName = 'win';
-        playSound(soundName);
+        if (nextState.phase === 'gameOver' && state.phase !== 'gameOver') {
+          playSound('win', '\u80dc\u5229');
+        } else if (decision.pass) {
+          playSound('pass', '\u4e0d\u8981');
+        } else {
+          playSoundForPlay(nextState.lastPlay.play);
+        }
         setState(nextState);
       }, 700);
     }
@@ -804,11 +940,11 @@
 
   const handlers = {
     onBidCall: () => {
-      playSound('bid');
+      playBidSound(true);
       setState(bid(state, 0, true));
     },
     onBidPass: () => {
-      playSound('pass');
+      playBidSound(false);
       setState(bid(state, 0, false));
     },
     onPlay: playSelected,

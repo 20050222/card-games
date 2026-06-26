@@ -1,0 +1,740 @@
+(function startGame() {
+  const RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2', 'SJ', 'BJ'];
+  const RANK_VALUES = Object.fromEntries(RANKS.map((rank, index) => [rank, index + 3]));
+  const SUITS = ['\u2660', '\u2665', '\u2663', '\u2666'];
+  const RED_SUITS = new Set(['\u2665', '\u2666']);
+  const SEQUENCE_MAX_VALUE = RANK_VALUES.A;
+  const SEATS = [
+    { id: 'player', name: '\u4f60', kind: 'human' },
+    { id: 'ai-left', name: '\u5de6\u5bb6 AI', kind: 'ai' },
+    { id: 'ai-right', name: '\u53f3\u5bb6 AI', kind: 'ai' },
+  ];
+
+  let state = createGame();
+  let aiTurnToken = 0;
+
+  function createDeck() {
+    const cards = [];
+    for (const rank of RANKS.slice(0, 13)) {
+      for (const suit of SUITS) {
+        cards.push({
+          id: `${rank}-${suit}`,
+          rank,
+          suit,
+          value: RANK_VALUES[rank],
+          color: RED_SUITS.has(suit) ? 'red' : 'black',
+        });
+      }
+    }
+    cards.push({ id: 'SJ', rank: 'SJ', suit: 'JOKER', value: RANK_VALUES.SJ, color: 'black' });
+    cards.push({ id: 'BJ', rank: 'BJ', suit: 'JOKER', value: RANK_VALUES.BJ, color: 'red' });
+    return cards;
+  }
+
+  function shuffleDeck(deck, rng = Math.random) {
+    const copy = deck.slice();
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(rng() * (index + 1));
+      [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+    }
+    return copy;
+  }
+
+  function sortCards(cards, direction = 'desc') {
+    const multiplier = direction === 'asc' ? 1 : -1;
+    return cards.slice().sort((left, right) => {
+      if (left.value !== right.value) {
+        return (left.value - right.value) * multiplier;
+      }
+      return String(left.suit).localeCompare(String(right.suit)) * multiplier;
+    });
+  }
+
+  function dealCards(deck) {
+    return {
+      hands: [
+        sortCards(deck.slice(0, 17)),
+        sortCards(deck.slice(17, 34)),
+        sortCards(deck.slice(34, 51)),
+      ],
+      bottomCards: sortCards(deck.slice(51, 54)),
+    };
+  }
+
+  function getCardLabel(card) {
+    if (card.rank === 'SJ') return '\u5c0f\u738b';
+    if (card.rank === 'BJ') return '\u5927\u738b';
+    return `${card.rank}${card.suit}`;
+  }
+
+  function removeCards(hand, cardsToRemove) {
+    const removeIds = new Set(cardsToRemove.map((card) => card.id));
+    return hand.filter((card) => !removeIds.has(card.id));
+  }
+
+  function findCardsByIds(hand, cardIds) {
+    const idSet = new Set(cardIds);
+    return hand.filter((card) => idSet.has(card.id));
+  }
+
+  function groupCards(cards) {
+    const groups = new Map();
+    for (const card of cards) {
+      if (!groups.has(card.rank)) {
+        groups.set(card.rank, []);
+      }
+      groups.get(card.rank).push(card);
+    }
+    return [...groups.entries()]
+      .map(([rank, groupedCards]) => ({
+        rank,
+        value: RANK_VALUES[rank],
+        count: groupedCards.length,
+        cards: groupedCards,
+      }))
+      .sort((left, right) => left.value - right.value);
+  }
+
+  function areConsecutive(groups) {
+    if (groups.some((group) => group.value > SEQUENCE_MAX_VALUE)) {
+      return false;
+    }
+    for (let index = 1; index < groups.length; index += 1) {
+      if (groups[index].value !== groups[index - 1].value + 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function makePlay(type, cards, mainGroup, extra = {}) {
+    return {
+      type,
+      cards: sortCards(cards),
+      mainRank: mainGroup.rank,
+      mainValue: mainGroup.value,
+      length: cards.length,
+      ...extra,
+    };
+  }
+
+  function evaluateSequence(cards, groups) {
+    if (cards.length >= 5 && groups.length === cards.length && areConsecutive(groups)) {
+      return makePlay('straight', cards, groups[groups.length - 1], { sequenceLength: groups.length });
+    }
+    if (
+      cards.length >= 6
+      && cards.length % 2 === 0
+      && groups.length >= 3
+      && groups.every((group) => group.count === 2)
+      && areConsecutive(groups)
+    ) {
+      return makePlay('consecutivePairs', cards, groups[groups.length - 1], { sequenceLength: groups.length });
+    }
+    return null;
+  }
+
+  function evaluateAirplane(cards, groups) {
+    const tripleGroups = groups.filter((group) => group.count === 3);
+    if (tripleGroups.length < 2 || !areConsecutive(tripleGroups)) {
+      return null;
+    }
+    const tripleCardCount = tripleGroups.length * 3;
+    const mainGroup = tripleGroups[tripleGroups.length - 1];
+    if (cards.length === tripleCardCount && groups.length === tripleGroups.length) {
+      return makePlay('airplane', cards, mainGroup, { sequenceLength: tripleGroups.length });
+    }
+    const nonTripleGroups = groups.filter((group) => group.count !== 3);
+    if (
+      cards.length === tripleGroups.length * 4
+      && nonTripleGroups.length === tripleGroups.length
+      && nonTripleGroups.every((group) => group.count === 1)
+    ) {
+      return makePlay('airplaneSingles', cards, mainGroup, { sequenceLength: tripleGroups.length });
+    }
+    if (
+      cards.length === tripleGroups.length * 5
+      && nonTripleGroups.length === tripleGroups.length
+      && nonTripleGroups.every((group) => group.count === 2)
+    ) {
+      return makePlay('airplanePairs', cards, mainGroup, { sequenceLength: tripleGroups.length });
+    }
+    return null;
+  }
+
+  function evaluateFourWithTwo(cards, groups) {
+    const fourGroup = groups.find((group) => group.count === 4);
+    if (!fourGroup) {
+      return null;
+    }
+    if (cards.length === 4) {
+      return makePlay('bomb', cards, fourGroup);
+    }
+    const sideGroups = groups.filter((group) => group.rank !== fourGroup.rank);
+    if (cards.length === 6 && sideGroups.length === 2 && sideGroups.every((group) => group.count === 1)) {
+      return makePlay('fourTwoSingles', cards, fourGroup);
+    }
+    if (cards.length === 8 && sideGroups.length === 2 && sideGroups.every((group) => group.count === 2)) {
+      return makePlay('fourTwoPairs', cards, fourGroup);
+    }
+    return null;
+  }
+
+  function evaluatePlay(cards) {
+    if (!cards || cards.length === 0) {
+      return null;
+    }
+    const groups = groupCards(sortCards(cards, 'asc'));
+    const counts = groups.map((group) => group.count).sort((left, right) => right - left);
+    if (cards.length === 1) {
+      return makePlay('single', cards, groups[0]);
+    }
+    if (cards.length === 2) {
+      if (groups.length === 2 && groups.some((group) => group.rank === 'SJ') && groups.some((group) => group.rank === 'BJ')) {
+        return makePlay('rocket', cards, { rank: 'BJ', value: RANK_VALUES.BJ });
+      }
+      return groups.length === 1 ? makePlay('pair', cards, groups[0]) : null;
+    }
+    if (cards.length === 3 && groups.length === 1) {
+      return makePlay('triple', cards, groups[0]);
+    }
+    const fourWithTwo = evaluateFourWithTwo(cards, groups);
+    if (fourWithTwo) {
+      return fourWithTwo;
+    }
+    if (cards.length === 4 && counts[0] === 3) {
+      return makePlay('tripleSingle', cards, groups.find((group) => group.count === 3));
+    }
+    if (cards.length === 5 && counts[0] === 3 && counts[1] === 2) {
+      return makePlay('triplePair', cards, groups.find((group) => group.count === 3));
+    }
+    return evaluateSequence(cards, groups) || evaluateAirplane(cards, groups);
+  }
+
+  function canBeat(candidateCards, targetCards) {
+    const candidate = Array.isArray(candidateCards) ? evaluatePlay(candidateCards) : candidateCards;
+    const target = Array.isArray(targetCards) ? evaluatePlay(targetCards) : targetCards;
+    if (!candidate) return false;
+    if (!target) return true;
+    if (target.type === 'rocket') return false;
+    if (candidate.type === 'rocket') return true;
+    if (candidate.type === 'bomb' && target.type !== 'bomb') return true;
+    if (candidate.type === 'bomb' && target.type === 'bomb') return candidate.mainValue > target.mainValue;
+    if (candidate.type !== target.type || candidate.length !== target.length) return false;
+    if (candidate.sequenceLength !== target.sequenceLength) return false;
+    return candidate.mainValue > target.mainValue;
+  }
+
+  function groupByRank(cards) {
+    const groups = new Map();
+    for (const card of sortCards(cards, 'asc')) {
+      if (!groups.has(card.rank)) {
+        groups.set(card.rank, []);
+      }
+      groups.get(card.rank).push(card);
+    }
+    return [...groups.values()];
+  }
+
+  function groupValue(group) {
+    return RANK_VALUES[group[0].rank];
+  }
+
+  function chooseBid(hand) {
+    const groups = groupByRank(hand);
+    let score = 0;
+    for (const card of hand) {
+      if (card.rank === 'SJ' || card.rank === 'BJ') score += 4;
+      if (card.rank === '2') score += 2;
+      if (card.rank === 'A') score += 1;
+      if (card.rank === 'K') score += 0.5;
+    }
+    score += groups.filter((group) => group.length === 4).length * 5;
+    return score >= 8;
+  }
+
+  function pushIfValid(candidates, cards) {
+    const play = evaluatePlay(cards);
+    if (play) {
+      candidates.push({ cards: sortCards(cards), play });
+    }
+  }
+
+  function getConsecutiveSlices(groups, minLength) {
+    const slices = [];
+    for (let start = 0; start < groups.length; start += 1) {
+      const slice = [groups[start]];
+      for (let end = start + 1; end < groups.length; end += 1) {
+        if (groupValue(groups[end]) !== groupValue(groups[end - 1]) + 1) break;
+        slice.push(groups[end]);
+        if (slice.length >= minLength) slices.push(slice.slice());
+      }
+    }
+    return slices;
+  }
+
+  function groupsToCards(groups, count) {
+    return groups.flatMap((group) => group.slice(0, count));
+  }
+
+  function chooseGroupCombinations(groups, count) {
+    const combinations = [];
+    function collect(start, selected) {
+      if (selected.length === count) {
+        combinations.push(selected.slice());
+        return;
+      }
+      for (let index = start; index < groups.length; index += 1) {
+        selected.push(groups[index]);
+        collect(index + 1, selected);
+        selected.pop();
+      }
+    }
+    collect(0, []);
+    return combinations;
+  }
+
+  function addSequentialCandidates(candidates, groups) {
+    const sequenceGroups = groups.filter((group) => groupValue(group) <= SEQUENCE_MAX_VALUE);
+    for (const slice of getConsecutiveSlices(sequenceGroups, 5)) {
+      pushIfValid(candidates, groupsToCards(slice, 1));
+    }
+    const pairGroups = sequenceGroups.filter((group) => group.length >= 2);
+    for (const slice of getConsecutiveSlices(pairGroups, 3)) {
+      pushIfValid(candidates, groupsToCards(slice, 2));
+    }
+    const tripleGroups = sequenceGroups.filter((group) => group.length >= 3);
+    for (const slice of getConsecutiveSlices(tripleGroups, 2)) {
+      const tripleCards = groupsToCards(slice, 3);
+      const tripleRanks = new Set(slice.map((group) => group[0].rank));
+      const sideGroups = groups.filter((group) => !tripleRanks.has(group[0].rank));
+      pushIfValid(candidates, tripleCards);
+      const singleSideGroups = sideGroups.slice(0, slice.length);
+      if (singleSideGroups.length === slice.length) {
+        pushIfValid(candidates, [...tripleCards, ...groupsToCards(singleSideGroups, 1)]);
+      }
+      const pairSideGroups = sideGroups.filter((group) => group.length >= 2).slice(0, slice.length);
+      if (pairSideGroups.length === slice.length) {
+        pushIfValid(candidates, [...tripleCards, ...groupsToCards(pairSideGroups, 2)]);
+      }
+    }
+  }
+
+  function addTripleAttachmentCandidates(candidates, groups) {
+    for (const tripleGroup of groups.filter((group) => group.length >= 3)) {
+      const sideGroups = groups.filter((group) => group[0].rank !== tripleGroup[0].rank);
+      const tripleCards = tripleGroup.slice(0, 3);
+      if (sideGroups[0]) {
+        pushIfValid(candidates, [...tripleCards, sideGroups[0][0]]);
+      }
+      const pairSideGroup = sideGroups.find((group) => group.length >= 2);
+      if (pairSideGroup) {
+        pushIfValid(candidates, [...tripleCards, ...pairSideGroup.slice(0, 2)]);
+      }
+    }
+  }
+
+  function addFourWithTwoCandidates(candidates, groups) {
+    for (const fourGroup of groups.filter((group) => group.length === 4)) {
+      const sideGroups = groups.filter((group) => group[0].rank !== fourGroup[0].rank);
+      for (const singleSideGroups of chooseGroupCombinations(sideGroups, 2)) {
+        pushIfValid(candidates, [...fourGroup, ...groupsToCards(singleSideGroups, 1)]);
+      }
+      const pairSideGroups = sideGroups.filter((group) => group.length >= 2);
+      for (const pairSideGroupSelection of chooseGroupCombinations(pairSideGroups, 2)) {
+        pushIfValid(candidates, [...fourGroup, ...groupsToCards(pairSideGroupSelection, 2)]);
+      }
+    }
+  }
+
+  function buildBasicCandidates(hand) {
+    const groups = groupByRank(hand);
+    const candidates = [];
+    for (const group of groups) {
+      pushIfValid(candidates, [group[0]]);
+      if (group.length >= 2) pushIfValid(candidates, group.slice(0, 2));
+      if (group.length >= 3) pushIfValid(candidates, group.slice(0, 3));
+      if (group.length === 4) pushIfValid(candidates, group.slice(0, 4));
+    }
+    const smallJoker = hand.find((card) => card.rank === 'SJ');
+    const bigJoker = hand.find((card) => card.rank === 'BJ');
+    if (smallJoker && bigJoker) pushIfValid(candidates, [smallJoker, bigJoker]);
+    addSequentialCandidates(candidates, groups);
+    addTripleAttachmentCandidates(candidates, groups);
+    addFourWithTwoCandidates(candidates, groups);
+    return candidates.sort((left, right) => {
+      if (left.play.type === 'rocket' && right.play.type !== 'rocket') return 1;
+      if (right.play.type === 'rocket' && left.play.type !== 'rocket') return -1;
+      if (left.play.type === 'bomb' && right.play.type !== 'bomb') return 1;
+      if (right.play.type === 'bomb' && left.play.type !== 'bomb') return -1;
+      if (left.cards.length !== right.cards.length) return left.cards.length - right.cards.length;
+      return left.play.mainValue - right.play.mainValue;
+    });
+  }
+
+  function findHint(hand, lastPlay) {
+    const candidates = buildBasicCandidates(hand);
+    const target = Array.isArray(lastPlay) ? evaluatePlay(lastPlay) : lastPlay;
+    const match = candidates.find((candidate) => canBeat(candidate.play, target));
+    return match ? match.cards : null;
+  }
+
+  function choosePlay(hand, lastPlay) {
+    const target = Array.isArray(lastPlay) ? evaluatePlay(lastPlay) : lastPlay;
+    const cards = findHint(hand, target);
+    if (!cards) {
+      return { pass: true, cards: [] };
+    }
+    return { pass: false, cards, play: evaluatePlay(cards) };
+  }
+
+  function nextSeat(index) {
+    return (index + 1) % 3;
+  }
+
+  function createDealOptions(options) {
+    return {
+      ...(options.deck ? { deck: options.deck } : {}),
+      ...(options.rng ? { rng: options.rng } : {}),
+    };
+  }
+
+  function areCardsInHand(hand, cards) {
+    const handIds = new Set(hand.map((card) => card.id));
+    const selectedIds = new Set();
+    return cards.every((card) => {
+      if (!card || !handIds.has(card.id) || selectedIds.has(card.id)) return false;
+      selectedIds.add(card.id);
+      return true;
+    });
+  }
+
+  function cloneState(stateToClone) {
+    return {
+      ...stateToClone,
+      seats: stateToClone.seats.map((seat) => ({ ...seat, hand: seat.hand.slice() })),
+      bottomCards: stateToClone.bottomCards.slice(),
+      bids: stateToClone.bids.slice(),
+      selectedIds: stateToClone.selectedIds.slice(),
+      dealOptions: { ...(stateToClone.dealOptions || {}) },
+      lastPlay: stateToClone.lastPlay
+        ? { ...stateToClone.lastPlay, cards: stateToClone.lastPlay.cards.slice() }
+        : null,
+    };
+  }
+
+  function createGame(options = {}) {
+    const deck = options.deck || shuffleDeck(createDeck(), options.rng || Math.random);
+    const deal = dealCards(deck);
+    return {
+      phase: 'bidding',
+      seats: SEATS.map((seat, index) => ({ ...seat, hand: deal.hands[index], role: 'farmer' })),
+      bottomCards: deal.bottomCards,
+      landlord: null,
+      activeSeat: 0,
+      bids: [],
+      bidPasses: 0,
+      dealOptions: createDealOptions(options),
+      lastPlay: null,
+      passCount: 0,
+      selectedIds: [],
+      winnerSide: null,
+      message: '\u8bf7\u9009\u62e9\u662f\u5426\u53eb\u5730\u4e3b',
+    };
+  }
+
+  function bid(currentState, seatIndex, wantsLandlord) {
+    if (currentState.phase !== 'bidding' || currentState.activeSeat !== seatIndex) {
+      return { ...currentState, message: '\u8fd8\u6ca1\u6709\u8f6e\u5230\u8be5\u73a9\u5bb6\u53eb\u5730\u4e3b' };
+    }
+    if (wantsLandlord) {
+      const next = cloneState(currentState);
+      next.phase = 'playing';
+      next.landlord = seatIndex;
+      next.activeSeat = seatIndex;
+      next.seats = next.seats.map((seat, index) => ({
+        ...seat,
+        role: index === seatIndex ? 'landlord' : 'farmer',
+        hand: index === seatIndex ? sortCards(seat.hand.concat(next.bottomCards)) : seat.hand,
+      }));
+      next.message = `${next.seats[seatIndex].name} \u6210\u4e3a\u5730\u4e3b`;
+      return next;
+    }
+    const next = cloneState(currentState);
+    next.bids.push({ seatIndex, wantsLandlord: false });
+    next.bidPasses += 1;
+    if (next.bidPasses >= 3) {
+      return { ...createGame(next.dealOptions), message: '\u6240\u6709\u73a9\u5bb6\u4e0d\u53eb\uff0c\u91cd\u65b0\u53d1\u724c' };
+    }
+    next.activeSeat = nextSeat(seatIndex);
+    next.message = `${next.seats[seatIndex].name} \u4e0d\u53eb`;
+    return next;
+  }
+
+  function selectCardsByIds(hand, ids) {
+    return findCardsByIds(hand, ids);
+  }
+
+  function playCards(currentState, seatIndex, cards) {
+    if (currentState.phase !== 'playing' || currentState.activeSeat !== seatIndex) {
+      return { ...currentState, message: '\u8fd8\u6ca1\u6709\u8f6e\u5230\u8be5\u73a9\u5bb6\u51fa\u724c' };
+    }
+    if (Array.isArray(cards) && !areCardsInHand(currentState.seats[seatIndex].hand, cards)) {
+      return { ...currentState, message: '\u6240\u9009\u724c\u4e0d\u5728\u5f53\u524d\u73a9\u5bb6\u624b\u724c\u4e2d' };
+    }
+    const play = evaluatePlay(cards);
+    if (!play) {
+      return { ...currentState, message: '\u8bf7\u9009\u62e9\u6709\u6548\u724c\u578b' };
+    }
+    if (currentState.lastPlay && !canBeat(play, currentState.lastPlay.play)) {
+      return { ...currentState, message: '\u5fc5\u987b\u5927\u8fc7\u4e0a\u5bb6\u51fa\u724c' };
+    }
+    const next = cloneState(currentState);
+    next.seats[seatIndex].hand = removeCards(next.seats[seatIndex].hand, cards);
+    next.lastPlay = { seatIndex, play, cards: sortCards(cards) };
+    next.passCount = 0;
+    next.selectedIds = [];
+    if (next.seats[seatIndex].hand.length === 0) {
+      next.phase = 'gameOver';
+      next.winnerSide = next.landlord === seatIndex ? 'landlord' : 'farmers';
+      next.message = next.winnerSide === 'landlord' ? '\u5730\u4e3b\u83b7\u80dc' : '\u519c\u6c11\u83b7\u80dc';
+      return next;
+    }
+    next.activeSeat = nextSeat(seatIndex);
+    next.message = `${next.seats[seatIndex].name} \u51fa\u724c`;
+    return next;
+  }
+
+  function passTurn(currentState, seatIndex) {
+    if (currentState.phase !== 'playing' || currentState.activeSeat !== seatIndex) {
+      return { ...currentState, message: '\u8fd8\u6ca1\u6709\u8f6e\u5230\u8be5\u73a9\u5bb6\u64cd\u4f5c' };
+    }
+    if (!currentState.lastPlay) {
+      return { ...currentState, message: '\u5f53\u524d\u5fc5\u987b\u51fa\u724c' };
+    }
+    const next = cloneState(currentState);
+    next.passCount += 1;
+    next.selectedIds = [];
+    next.activeSeat = nextSeat(seatIndex);
+    next.message = `${next.seats[seatIndex].name} \u4e0d\u51fa`;
+    if (next.passCount >= 2) {
+      next.passCount = 0;
+      next.lastPlay = null;
+      next.message = '\u672c\u8f6e\u7ed3\u675f\uff0c\u91cd\u65b0\u9886\u51fa';
+    }
+    return next;
+  }
+
+  function cardClass(card, selected) {
+    return `playing-card ${card.color === 'red' ? 'red' : 'black'} ${selected ? 'selected' : ''}`;
+  }
+
+  function actionButton(text, handler, variant = '') {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `action-button ${variant}`.trim();
+    button.textContent = text;
+    button.addEventListener('click', handler);
+    return button;
+  }
+
+  function renderCard(card, selectedIds, onToggleCard, interactive) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = cardClass(card, selectedIds.has(card.id));
+    button.textContent = getCardLabel(card);
+    button.disabled = !interactive;
+    button.setAttribute('aria-pressed', selectedIds.has(card.id) ? 'true' : 'false');
+    if (interactive) button.addEventListener('click', () => onToggleCard(card.id));
+    return button;
+  }
+
+  function renderCardBacks(count) {
+    const row = document.createElement('div');
+    row.className = 'ai-card-row';
+    for (let index = 0; index < Math.min(count, 12); index += 1) {
+      const card = document.createElement('div');
+      card.className = 'card-back';
+      row.append(card);
+    }
+    return row;
+  }
+
+  function renderActions(currentState, handlers) {
+    const bar = document.createElement('div');
+    bar.className = 'action-bar';
+    if (currentState.phase === 'bidding' && currentState.activeSeat === 0) {
+      bar.append(
+        actionButton('\u53eb\u5730\u4e3b', handlers.onBidCall),
+        actionButton('\u4e0d\u53eb', handlers.onBidPass, 'secondary'),
+      );
+      return bar;
+    }
+    if (currentState.phase === 'playing' && currentState.activeSeat === 0) {
+      const passButton = actionButton('\u4e0d\u51fa', handlers.onPass, 'secondary');
+      passButton.disabled = !currentState.lastPlay;
+      bar.append(
+        actionButton('\u51fa\u724c', handlers.onPlay),
+        actionButton('\u63d0\u793a', handlers.onHint, 'secondary'),
+        passButton,
+      );
+      return bar;
+    }
+    if (currentState.phase === 'gameOver') {
+      bar.append(actionButton('\u518d\u6765\u4e00\u5c40', handlers.onNewRound));
+    }
+    return bar;
+  }
+
+  function renderSeat(seat, index, currentState, handlers) {
+    const section = document.createElement('section');
+    section.className = `seat ${index === 0 ? 'seat-player' : index === 1 ? 'seat-ai-left' : 'seat-ai-right'}`;
+    const header = document.createElement('div');
+    header.className = 'seat-header';
+    const label = document.createElement('span');
+    label.textContent = `${seat.name} \u00b7 ${seat.hand.length} \u5f20`;
+    header.append(label);
+    if (currentState.landlord === index) {
+      const badge = document.createElement('span');
+      badge.className = 'landlord-badge';
+      badge.textContent = '\u5730\u4e3b';
+      header.append(badge);
+    }
+    section.append(header);
+    if (index === 0) {
+      const hand = document.createElement('div');
+      hand.className = 'hand-row';
+      const selectedIds = new Set(currentState.selectedIds);
+      const interactive = currentState.phase === 'playing' && currentState.activeSeat === 0;
+      for (const card of seat.hand) {
+        hand.append(renderCard(card, selectedIds, toggleCard, interactive));
+      }
+      section.append(hand, renderActions(currentState, handlers));
+    } else {
+      section.append(renderCardBacks(seat.hand.length));
+    }
+    return section;
+  }
+
+  function renderBottomCards(currentState) {
+    const wrapper = document.createElement('section');
+    wrapper.className = 'bottom-cards';
+    const title = document.createElement('h2');
+    title.textContent = '\u5e95\u724c';
+    wrapper.append(title);
+    const row = document.createElement('div');
+    row.className = 'bottom-card-row';
+    for (const card of currentState.bottomCards) {
+      row.append(renderCard(card, new Set(), () => {}, false));
+    }
+    wrapper.append(row);
+    return wrapper;
+  }
+
+  function renderLastPlay(currentState) {
+    const wrapper = document.createElement('section');
+    wrapper.className = 'last-play';
+    const title = document.createElement('h2');
+    title.textContent = currentState.lastPlay
+      ? `${currentState.seats[currentState.lastPlay.seatIndex].name} \u521a\u51fa`
+      : '\u7b49\u5f85\u51fa\u724c';
+    wrapper.append(title);
+    const row = document.createElement('div');
+    row.className = 'played-card-row';
+    if (currentState.lastPlay) {
+      for (const card of currentState.lastPlay.cards) {
+        row.append(renderCard(card, new Set(), () => {}, false));
+      }
+    }
+    wrapper.append(row);
+    return wrapper;
+  }
+
+  function renderGame(currentState) {
+    const root = document.querySelector('#gameRoot');
+    const status = document.querySelector('#statusText');
+    root.innerHTML = '';
+    status.textContent = currentState.message;
+    const center = document.createElement('div');
+    center.className = 'table-center';
+    center.append(renderBottomCards(currentState), renderLastPlay(currentState));
+    root.append(
+      renderSeat(currentState.seats[1], 1, currentState, handlers),
+      renderSeat(currentState.seats[2], 2, currentState, handlers),
+      center,
+      renderSeat(currentState.seats[0], 0, currentState, handlers),
+    );
+  }
+
+  function setState(nextState) {
+    state = nextState;
+    renderGame(state);
+    queueAiTurn();
+  }
+
+  function toggleCard(cardId) {
+    const selected = new Set(state.selectedIds);
+    if (selected.has(cardId)) selected.delete(cardId);
+    else selected.add(cardId);
+    state = { ...state, selectedIds: [...selected] };
+    renderGame(state);
+  }
+
+  function playSelected() {
+    setState(playCards(state, 0, selectCardsByIds(state.seats[0].hand, state.selectedIds)));
+  }
+
+  function passSelected() {
+    setState(passTurn(state, 0));
+  }
+
+  function hint() {
+    const target = state.lastPlay ? state.lastPlay.play : null;
+    const cards = findHint(state.seats[0].hand, target);
+    state = {
+      ...state,
+      selectedIds: cards ? cards.map((card) => card.id) : [],
+      message: cards ? '\u5df2\u4e3a\u4f60\u9009\u51fa\u4e00\u624b\u724c' : '\u6ca1\u6709\u53ef\u538b\u8fc7\u7684\u724c',
+    };
+    renderGame(state);
+  }
+
+  function newRound() {
+    aiTurnToken += 1;
+    setState(createGame());
+  }
+
+  function queueAiTurn() {
+    aiTurnToken += 1;
+    const token = aiTurnToken;
+    if (state.phase === 'bidding' && state.activeSeat !== 0) {
+      window.setTimeout(() => {
+        if (token !== aiTurnToken || state.phase !== 'bidding' || state.activeSeat === 0) return;
+        const seat = state.activeSeat;
+        setState(bid(state, seat, chooseBid(state.seats[seat].hand)));
+      }, 500);
+    }
+    if (state.phase === 'playing' && state.activeSeat !== 0) {
+      window.setTimeout(() => {
+        if (token !== aiTurnToken || state.phase !== 'playing' || state.activeSeat === 0) return;
+        const seat = state.activeSeat;
+        const target = state.lastPlay ? state.lastPlay.play : null;
+        const decision = choosePlay(state.seats[seat].hand, target);
+        setState(decision.pass ? passTurn(state, seat) : playCards(state, seat, decision.cards));
+      }, 700);
+    }
+  }
+
+  const handlers = {
+    onBidCall: () => setState(bid(state, 0, true)),
+    onBidPass: () => setState(bid(state, 0, false)),
+    onPlay: playSelected,
+    onPass: passSelected,
+    onHint: hint,
+    onNewRound: newRound,
+  };
+
+  document.querySelector('#newRoundButton').addEventListener('click', newRound);
+  renderGame(state);
+  queueAiTurn();
+}());

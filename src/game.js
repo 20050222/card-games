@@ -36,10 +36,17 @@ function cloneState(state) {
     seats: state.seats.map((seat) => ({ ...seat, hand: seat.hand.slice() })),
     bottomCards: state.bottomCards.slice(),
     bids: state.bids.slice(),
+    playActionCounts: (state.playActionCounts || [0, 0, 0]).slice(),
+    playedCardCounts: (state.playedCardCounts || [0, 0, 0]).slice(),
     selectedIds: state.selectedIds.slice(),
     dealOptions: { ...(state.dealOptions || {}) },
     lastPlay: state.lastPlay
       ? { ...state.lastPlay, cards: state.lastPlay.cards.slice() }
+      : null,
+    lastAlarm: state.lastAlarm ? { ...state.lastAlarm } : null,
+    roundScores: (state.roundScores || [0, 0, 0]).slice(),
+    settlement: state.settlement
+      ? { ...state.settlement, roundScores: state.settlement.roundScores.slice() }
       : null,
   };
 }
@@ -62,11 +69,22 @@ export function createGame(options = {}) {
     bids: [],
     bidPasses: 0,
     biddingTurns: 0,
+    baseScore: 1,
+    multiplier: 1,
+    bidMultiplier: 1,
+    bombCount: 0,
+    rocketCount: 0,
+    playActionCounts: [0, 0, 0],
+    playedCardCounts: [0, 0, 0],
     dealOptions: createDealOptions(options),
     lastPlay: null,
     passCount: 0,
     selectedIds: [],
+    lastAlarm: null,
+    spring: null,
     winnerSide: null,
+    roundScores: [0, 0, 0],
+    settlement: null,
     message: '\u8bf7\u9009\u62e9\u662f\u5426\u53eb\u5730\u4e3b',
   };
 }
@@ -87,6 +105,67 @@ function finalizeLandlord(state, landlordIndex) {
   return next;
 }
 
+function applyRobMultiplier(state) {
+  state.bidMultiplier *= 2;
+  state.multiplier *= 2;
+}
+
+function applyPlayMultiplier(state, play) {
+  if (play.type === 'bomb') {
+    state.bombCount += 1;
+    state.multiplier *= 2;
+  }
+  if (play.type === 'rocket') {
+    state.rocketCount += 1;
+    state.multiplier *= 2;
+  }
+}
+
+function detectSpring(state, winnerSeatIndex) {
+  const landlordIndex = state.landlord;
+  if (winnerSeatIndex === landlordIndex) {
+    const farmersNeverPlayed = state.playActionCounts.every((count, index) => (
+      index === landlordIndex || count === 0
+    ));
+    return farmersNeverPlayed ? 'spring' : null;
+  }
+  return state.playActionCounts[landlordIndex] <= 1 ? 'antiSpring' : null;
+}
+
+function settleRound(state, winnerSeatIndex) {
+  const spring = detectSpring(state, winnerSeatIndex);
+  if (spring) {
+    state.spring = spring;
+    state.multiplier *= 2;
+  }
+
+  const unitScore = state.baseScore * state.multiplier;
+  const landlordWon = winnerSeatIndex === state.landlord;
+  state.roundScores = state.seats.map((seat, index) => {
+    if (index === state.landlord) {
+      return landlordWon ? unitScore * 2 : -unitScore * 2;
+    }
+    return landlordWon ? -unitScore : unitScore;
+  });
+  state.settlement = {
+    baseScore: state.baseScore,
+    multiplier: state.multiplier,
+    winnerSide: state.winnerSide,
+    spring: state.spring,
+    roundScores: state.roundScores.slice(),
+  };
+}
+
+function applyAlarm(state, seatIndex) {
+  const remaining = state.seats[seatIndex].hand.length;
+  if (remaining !== 1 && remaining !== 2) {
+    state.lastAlarm = null;
+    return;
+  }
+  state.lastAlarm = { seatIndex, remaining };
+  state.message = `${state.message}\uff0c${state.seats[seatIndex].name}\u53ea\u5269 ${remaining} \u5f20\u724c`;
+}
+
 export function bid(state, seatIndex, wantsLandlord) {
   if (state.phase !== 'bidding' || state.activeSeat !== seatIndex) {
     return { ...state, message: '\u8fd8\u6ca1\u6709\u8f6e\u5230\u8be5\u73a9\u5bb6\u53eb\u5730\u4e3b' };
@@ -103,6 +182,9 @@ export function bid(state, seatIndex, wantsLandlord) {
 
   if (wantsLandlord) {
     next.landlordCandidate = seatIndex;
+    if (isRobbing) {
+      applyRobMultiplier(next);
+    }
   } else if (!isRobbing) {
     next.bidPasses += 1;
   }
@@ -166,16 +248,21 @@ export function playCards(state, seatIndex, cards) {
   next.lastPlay = { seatIndex, play, cards: sortCards(cards) };
   next.passCount = 0;
   next.selectedIds = [];
+  next.playActionCounts[seatIndex] += 1;
+  next.playedCardCounts[seatIndex] += cards.length;
+  applyPlayMultiplier(next, play);
 
   if (next.seats[seatIndex].hand.length === 0) {
     next.phase = 'gameOver';
     next.winnerSide = next.landlord === seatIndex ? 'landlord' : 'farmers';
     next.message = next.winnerSide === 'landlord' ? '\u5730\u4e3b\u83b7\u80dc' : '\u519c\u6c11\u83b7\u80dc';
+    settleRound(next, seatIndex);
     return next;
   }
 
   next.activeSeat = nextSeat(seatIndex);
   next.message = `${next.seats[seatIndex].name} \u51fa\u724c`;
+  applyAlarm(next, seatIndex);
   return next;
 }
 

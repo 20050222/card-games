@@ -124,6 +124,29 @@ function renderBottomCards(state) {
   return wrapper;
 }
 
+function springLabel(spring) {
+  if (spring === 'spring') return '\u6625\u5929';
+  if (spring === 'antiSpring') return '\u53cd\u6625';
+  return '\u65e0';
+}
+
+function renderRoundStats(state) {
+  const wrapper = document.createElement('section');
+  wrapper.className = 'round-stats';
+
+  const summary = document.createElement('p');
+  summary.textContent = `\u5e95\u5206 ${state.baseScore || 1} \u00b7 \u500d\u6570 ${state.multiplier || 1}x \u00b7 \u70b8\u5f39 ${state.bombCount || 0} \u00b7 \u738b\u70b8 ${state.rocketCount || 0}`;
+  wrapper.append(summary);
+
+  if (state.settlement) {
+    const settlement = document.createElement('p');
+    settlement.textContent = `\u7ed3\u7b97 ${state.seats.map((seat, index) => `${seat.name} ${state.roundScores[index] > 0 ? '+' : ''}${state.roundScores[index]}`).join(' / ')} \u00b7 ${springLabel(state.spring)}`;
+    wrapper.append(settlement);
+  }
+
+  return wrapper;
+}
+
 function renderLastPlay(state) {
   const wrapper = document.createElement('section');
   wrapper.className = 'last-play';
@@ -152,7 +175,7 @@ export function renderGame(state, handlers) {
 
   const center = document.createElement('div');
   center.className = 'table-center';
-  center.append(renderBottomCards(state), renderLastPlay(state));
+  center.append(renderBottomCards(state), renderRoundStats(state), renderLastPlay(state));
 
   root.append(
     renderSeat(state.seats[1], 1, state, handlers),

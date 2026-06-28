@@ -195,6 +195,20 @@
     playSound(play.type, describePlay(play));
   }
 
+  function settlementCue(currentState) {
+    const winner = currentState.winnerSide === 'landlord' ? '\u5730\u4e3b\u83b7\u80dc' : '\u519c\u6c11\u83b7\u80dc';
+    if (currentState.spring === 'spring') return `\u6625\u5929\uff0c${winner}`;
+    if (currentState.spring === 'antiSpring') return `\u53cd\u6625\uff0c${winner}`;
+    return winner;
+  }
+
+  function playAlarmSound(currentState) {
+    if (!currentState.lastAlarm) return;
+    window.setTimeout(() => {
+      playSound('hint', currentState.lastAlarm.remaining === 1 ? '\u62a5\u5355' : '\u62a5\u53cc');
+    }, 450);
+  }
+
   function updateSoundButton() {
     const button = document.querySelector('#soundToggleButton');
     if (!button) return;
@@ -557,10 +571,17 @@
       seats: stateToClone.seats.map((seat) => ({ ...seat, hand: seat.hand.slice() })),
       bottomCards: stateToClone.bottomCards.slice(),
       bids: stateToClone.bids.slice(),
+      playActionCounts: (stateToClone.playActionCounts || [0, 0, 0]).slice(),
+      playedCardCounts: (stateToClone.playedCardCounts || [0, 0, 0]).slice(),
       selectedIds: stateToClone.selectedIds.slice(),
       dealOptions: { ...(stateToClone.dealOptions || {}) },
       lastPlay: stateToClone.lastPlay
         ? { ...stateToClone.lastPlay, cards: stateToClone.lastPlay.cards.slice() }
+        : null,
+      lastAlarm: stateToClone.lastAlarm ? { ...stateToClone.lastAlarm } : null,
+      roundScores: (stateToClone.roundScores || [0, 0, 0]).slice(),
+      settlement: stateToClone.settlement
+        ? { ...stateToClone.settlement, roundScores: stateToClone.settlement.roundScores.slice() }
         : null,
     };
   }
@@ -579,11 +600,22 @@
       bids: [],
       bidPasses: 0,
       biddingTurns: 0,
+      baseScore: 1,
+      multiplier: 1,
+      bidMultiplier: 1,
+      bombCount: 0,
+      rocketCount: 0,
+      playActionCounts: [0, 0, 0],
+      playedCardCounts: [0, 0, 0],
       dealOptions: createDealOptions(options),
       lastPlay: null,
       passCount: 0,
       selectedIds: [],
+      lastAlarm: null,
+      spring: null,
       winnerSide: null,
+      roundScores: [0, 0, 0],
+      settlement: null,
       message: '\u8bf7\u9009\u62e9\u662f\u5426\u53eb\u5730\u4e3b',
     };
   }
@@ -604,6 +636,66 @@
     return next;
   }
 
+  function applyRobMultiplier(currentState) {
+    currentState.bidMultiplier *= 2;
+    currentState.multiplier *= 2;
+  }
+
+  function applyPlayMultiplier(currentState, play) {
+    if (play.type === 'bomb') {
+      currentState.bombCount += 1;
+      currentState.multiplier *= 2;
+    }
+    if (play.type === 'rocket') {
+      currentState.rocketCount += 1;
+      currentState.multiplier *= 2;
+    }
+  }
+
+  function detectSpring(currentState, winnerSeatIndex) {
+    const landlordIndex = currentState.landlord;
+    if (winnerSeatIndex === landlordIndex) {
+      const farmersNeverPlayed = currentState.playActionCounts.every((count, index) => (
+        index === landlordIndex || count === 0
+      ));
+      return farmersNeverPlayed ? 'spring' : null;
+    }
+    return currentState.playActionCounts[landlordIndex] <= 1 ? 'antiSpring' : null;
+  }
+
+  function settleRound(currentState, winnerSeatIndex) {
+    const spring = detectSpring(currentState, winnerSeatIndex);
+    if (spring) {
+      currentState.spring = spring;
+      currentState.multiplier *= 2;
+    }
+    const unitScore = currentState.baseScore * currentState.multiplier;
+    const landlordWon = winnerSeatIndex === currentState.landlord;
+    currentState.roundScores = currentState.seats.map((seat, index) => {
+      if (index === currentState.landlord) {
+        return landlordWon ? unitScore * 2 : -unitScore * 2;
+      }
+      return landlordWon ? -unitScore : unitScore;
+    });
+    currentState.settlement = {
+      baseScore: currentState.baseScore,
+      multiplier: currentState.multiplier,
+      winnerSide: currentState.winnerSide,
+      spring: currentState.spring,
+      roundScores: currentState.roundScores.slice(),
+    };
+  }
+
+  function applyAlarm(currentState, seatIndex) {
+    const remaining = currentState.seats[seatIndex].hand.length;
+    if (remaining !== 1 && remaining !== 2) {
+      currentState.lastAlarm = null;
+      return;
+    }
+    currentState.lastAlarm = { seatIndex, remaining };
+    currentState.message = `${currentState.message}\uff0c${currentState.seats[seatIndex].name}\u53ea\u5269 ${remaining} \u5f20\u724c`;
+  }
+
   function bid(currentState, seatIndex, wantsLandlord) {
     if (currentState.phase !== 'bidding' || currentState.activeSeat !== seatIndex) {
       return { ...currentState, message: '\u8fd8\u6ca1\u6709\u8f6e\u5230\u8be5\u73a9\u5bb6\u53eb\u5730\u4e3b' };
@@ -619,6 +711,9 @@
 
     if (wantsLandlord) {
       next.landlordCandidate = seatIndex;
+      if (isRobbing) {
+        applyRobMultiplier(next);
+      }
     } else if (!isRobbing) {
       next.bidPasses += 1;
     }
@@ -667,14 +762,19 @@
     next.lastPlay = { seatIndex, play, cards: sortCards(cards) };
     next.passCount = 0;
     next.selectedIds = [];
+    next.playActionCounts[seatIndex] += 1;
+    next.playedCardCounts[seatIndex] += cards.length;
+    applyPlayMultiplier(next, play);
     if (next.seats[seatIndex].hand.length === 0) {
       next.phase = 'gameOver';
       next.winnerSide = next.landlord === seatIndex ? 'landlord' : 'farmers';
       next.message = next.winnerSide === 'landlord' ? '\u5730\u4e3b\u83b7\u80dc' : '\u519c\u6c11\u83b7\u80dc';
+      settleRound(next, seatIndex);
       return next;
     }
     next.activeSeat = nextSeat(seatIndex);
     next.message = `${next.seats[seatIndex].name} \u51fa\u724c`;
+    applyAlarm(next, seatIndex);
     return next;
   }
 
@@ -813,6 +913,26 @@
     return wrapper;
   }
 
+  function springLabel(spring) {
+    if (spring === 'spring') return '\u6625\u5929';
+    if (spring === 'antiSpring') return '\u53cd\u6625';
+    return '\u65e0';
+  }
+
+  function renderRoundStats(currentState) {
+    const wrapper = document.createElement('section');
+    wrapper.className = 'round-stats';
+    const summary = document.createElement('p');
+    summary.textContent = `\u5e95\u5206 ${currentState.baseScore || 1} \u00b7 \u500d\u6570 ${currentState.multiplier || 1}x \u00b7 \u70b8\u5f39 ${currentState.bombCount || 0} \u00b7 \u738b\u70b8 ${currentState.rocketCount || 0}`;
+    wrapper.append(summary);
+    if (currentState.settlement) {
+      const settlement = document.createElement('p');
+      settlement.textContent = `\u7ed3\u7b97 ${currentState.seats.map((seat, index) => `${seat.name} ${currentState.roundScores[index] > 0 ? '+' : ''}${currentState.roundScores[index]}`).join(' / ')} \u00b7 ${springLabel(currentState.spring)}`;
+      wrapper.append(settlement);
+    }
+    return wrapper;
+  }
+
   function renderLastPlay(currentState) {
     const wrapper = document.createElement('section');
     wrapper.className = 'last-play';
@@ -839,7 +959,7 @@
     status.textContent = currentState.message;
     const center = document.createElement('div');
     center.className = 'table-center';
-    center.append(renderBottomCards(currentState), renderLastPlay(currentState));
+    center.append(renderBottomCards(currentState), renderRoundStats(currentState), renderLastPlay(currentState));
     root.append(
       renderSeat(currentState.seats[1], 1, currentState, handlers),
       renderSeat(currentState.seats[2], 2, currentState, handlers),
@@ -865,9 +985,10 @@
   function playSelected() {
     const nextState = playCards(state, 0, selectCardsByIds(state.seats[0].hand, state.selectedIds));
     if (nextState.phase === 'gameOver' && state.phase !== 'gameOver') {
-      playSound('win', '\u80dc\u5229');
+      playSound('win', settlementCue(nextState));
     } else if (nextState.lastPlay !== state.lastPlay) {
       playSoundForPlay(nextState.lastPlay.play);
+      playAlarmSound(nextState);
     }
     setState(nextState);
   }
@@ -927,11 +1048,12 @@
         const decision = choosePlay(state.seats[seat].hand, target);
         const nextState = decision.pass ? passTurn(state, seat) : playCards(state, seat, decision.cards);
         if (nextState.phase === 'gameOver' && state.phase !== 'gameOver') {
-          playSound('win', '\u80dc\u5229');
+          playSound('win', settlementCue(nextState));
         } else if (decision.pass) {
           playSound('pass', '\u4e0d\u8981');
         } else {
           playSoundForPlay(nextState.lastPlay.play);
+          playAlarmSound(nextState);
         }
         setState(nextState);
       }, 700);

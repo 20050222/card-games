@@ -55,10 +55,13 @@ export function run() {
 
   const robStart = bid(game, 0, true);
   const robbed = bid(robStart, 1, true);
+  assert.strictEqual(robbed.bidMultiplier, 2, 'rob landlord doubles bidding multiplier');
+  assert.strictEqual(robbed.multiplier, 2, 'rob landlord doubles round multiplier');
   const robbedFinal = bid(robbed, 2, false);
   assert.strictEqual(robbedFinal.phase, 'playing');
   assert.strictEqual(robbedFinal.landlord, 1, 'AI can rob landlord from the first caller');
   assert.strictEqual(robbedFinal.seats[1].hand.length, 20);
+  assert.strictEqual(robbedFinal.multiplier, 2);
 
   const unownedPlay = playCards(landlordGame, 0, [landlordGame.seats[1].hand[0]]);
   assert.strictEqual(unownedPlay.activeSeat, 0);
@@ -86,6 +89,8 @@ export function run() {
   assert.strictEqual(afterPlay.seats[0].hand.length, 19);
   assert.strictEqual(afterPlay.activeSeat, 1);
   assert(afterPlay.lastPlay, 'last play is recorded');
+  assert.strictEqual(afterPlay.playActionCounts[0], 1, 'successful plays are counted by seat');
+  assert.strictEqual(afterPlay.playedCardCounts[0], 1, 'played cards are counted by seat');
 
   const afterPassOne = passTurn(afterPlay, 1);
   assert.strictEqual(afterPassOne.passCount, 1);
@@ -109,4 +114,52 @@ export function run() {
   const finished = playCards(winningGame, 0, winningGame.seats[0].hand);
   assert.strictEqual(finished.phase, 'gameOver');
   assert.strictEqual(finished.winnerSide, 'landlord');
+  assert.strictEqual(finished.spring, 'spring');
+  assert.deepStrictEqual(finished.roundScores, [4, -2, -2], 'spring doubles landlord win settlement');
+
+  const bombCards = selectCardsByRanks(landlordGame.seats[0].hand, ['3', '3', '3', '3']);
+  const afterBomb = playCards(landlordGame, 0, bombCards);
+  assert.strictEqual(afterBomb.multiplier, 2, 'bomb doubles multiplier');
+  assert.strictEqual(afterBomb.bombCount, 1);
+
+  const afterBombPassOne = passTurn(afterBomb, 1);
+  const afterBombPassTwo = passTurn(afterBombPassOne, 2);
+  const rocketCards = selectCardsByRanks(afterBombPassTwo.seats[0].hand, ['SJ', 'BJ']);
+  const afterRocket = playCards(afterBombPassTwo, 0, rocketCards);
+  assert.strictEqual(afterRocket.multiplier, 4, 'rocket doubles multiplier after bomb');
+  assert.strictEqual(afterRocket.rocketCount, 1);
+
+  const alarmGame = {
+    ...landlordGame,
+    seats: landlordGame.seats.map((seat, index) => ({
+      ...seat,
+      hand: index === 0 ? selectCardsByRanks(landlordGame.seats[0].hand, ['3', '4', '5']) : seat.hand,
+    })),
+    activeSeat: 0,
+    lastPlay: null,
+  };
+  const afterAlarm = playCards(alarmGame, 0, selectCardsByRanks(alarmGame.seats[0].hand, ['3']));
+  assert.deepStrictEqual(afterAlarm.lastAlarm, { seatIndex: 0, remaining: 2 });
+  assert.match(afterAlarm.message, /2|两|兩/, 'alarm message mentions remaining two cards');
+
+  const antiSpringGame = {
+    ...landlordGame,
+    seats: landlordGame.seats.map((seat, index) => ({
+      ...seat,
+      hand: index === 1 ? selectCardsByRanks(landlordGame.seats[1].hand, ['8']) : seat.hand,
+    })),
+    activeSeat: 1,
+    lastPlay: null,
+    playActionCounts: [1, 0, 0],
+    playedCardCounts: [1, 0, 0],
+  };
+  const antiSpringFinished = playCards(
+    antiSpringGame,
+    1,
+    antiSpringGame.seats[1].hand,
+  );
+  assert.strictEqual(antiSpringFinished.phase, 'gameOver');
+  assert.strictEqual(antiSpringFinished.winnerSide, 'farmers');
+  assert.strictEqual(antiSpringFinished.spring, 'antiSpring');
+  assert.deepStrictEqual(antiSpringFinished.roundScores, [-4, 2, 2], 'anti-spring doubles farmer win settlement');
 }

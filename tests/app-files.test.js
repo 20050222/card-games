@@ -25,6 +25,7 @@ export function run() {
   assert(browserApp.includes('\\u62a2\\u5730\\u4e3b'), 'browser bundle exposes rob landlord action text');
   assert(browserApp.includes('multiplier'), 'browser bundle tracks classic multiplier scoring');
   assert(browserApp.includes('roundScores'), 'browser bundle calculates round settlement scores');
+  assert(browserApp.includes('totalScores'), 'browser bundle keeps cumulative match scores across rounds');
   assert(browserApp.includes('spring'), 'browser bundle supports spring and anti-spring');
   assert(browserApp.includes('lastAlarm'), 'browser bundle supports one-card/two-card alarms');
   assert(html.includes('soundToggleButton'), 'index exposes a sound toggle button');

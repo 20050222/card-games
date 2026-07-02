@@ -32,6 +32,10 @@ export function run() {
   assert.deepStrictEqual(game.seats.map((seat) => seat.hand.length), [17, 17, 17]);
   assert.strictEqual(game.bottomCards.length, 3);
   assert.strictEqual(game.bottomRevealed, false, 'bottom cards stay hidden during bidding');
+  assert.deepStrictEqual(game.totalScores, [0, 0, 0], 'new match starts with zero total scores');
+
+  const carriedScoreGame = createGame({ deck, totalScores: [12, -4, -8] });
+  assert.deepStrictEqual(carriedScoreGame.totalScores, [12, -4, -8], 'new round can carry match totals');
 
   const firstCaller = bid(game, 0, true);
   assert.strictEqual(firstCaller.phase, 'bidding', 'calling landlord starts robbing instead of confirming immediately');
@@ -116,6 +120,9 @@ export function run() {
   assert.strictEqual(finished.winnerSide, 'landlord');
   assert.strictEqual(finished.spring, 'spring');
   assert.deepStrictEqual(finished.roundScores, [4, -2, -2], 'spring doubles landlord win settlement');
+  assert.deepStrictEqual(finished.totalScores, [4, -2, -2], 'round scores are added to match totals');
+  const nextMatchRound = createGame({ deck, totalScores: finished.totalScores });
+  assert.deepStrictEqual(nextMatchRound.totalScores, [4, -2, -2], 'next round keeps cumulative scores');
 
   const bombCards = selectCardsByRanks(landlordGame.seats[0].hand, ['3', '3', '3', '3']);
   const afterBomb = playCards(landlordGame, 0, bombCards);

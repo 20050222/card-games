@@ -15,6 +15,7 @@ function createDealOptions(options) {
   return {
     ...(options.deck ? { deck: options.deck } : {}),
     ...(options.rng ? { rng: options.rng } : {}),
+    ...(options.totalScores ? { totalScores: options.totalScores.slice() } : {}),
   };
 }
 
@@ -45,8 +46,13 @@ function cloneState(state) {
       : null,
     lastAlarm: state.lastAlarm ? { ...state.lastAlarm } : null,
     roundScores: (state.roundScores || [0, 0, 0]).slice(),
+    totalScores: (state.totalScores || [0, 0, 0]).slice(),
     settlement: state.settlement
-      ? { ...state.settlement, roundScores: state.settlement.roundScores.slice() }
+      ? {
+        ...state.settlement,
+        roundScores: state.settlement.roundScores.slice(),
+        totalScores: state.settlement.totalScores.slice(),
+      }
       : null,
   };
 }
@@ -84,6 +90,7 @@ export function createGame(options = {}) {
     spring: null,
     winnerSide: null,
     roundScores: [0, 0, 0],
+    totalScores: (options.totalScores || [0, 0, 0]).slice(),
     settlement: null,
     message: '\u8bf7\u9009\u62e9\u662f\u5426\u53eb\u5730\u4e3b',
   };
@@ -147,12 +154,14 @@ function settleRound(state, winnerSeatIndex) {
     }
     return landlordWon ? -unitScore : unitScore;
   });
+  state.totalScores = state.totalScores.map((score, index) => score + state.roundScores[index]);
   state.settlement = {
     baseScore: state.baseScore,
     multiplier: state.multiplier,
     winnerSide: state.winnerSide,
     spring: state.spring,
     roundScores: state.roundScores.slice(),
+    totalScores: state.totalScores.slice(),
   };
 }
 

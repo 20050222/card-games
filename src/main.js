@@ -58,7 +58,7 @@ function hint() {
 
 function newRound() {
   aiTurnToken += 1;
-  setState(createGame());
+  setState(createGame({ totalScores: state.totalScores }));
 }
 
 function queueAiTurn() {

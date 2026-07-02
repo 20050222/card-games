@@ -552,6 +552,7 @@
     return {
       ...(options.deck ? { deck: options.deck } : {}),
       ...(options.rng ? { rng: options.rng } : {}),
+      ...(options.totalScores ? { totalScores: options.totalScores.slice() } : {}),
     };
   }
 
@@ -580,8 +581,13 @@
         : null,
       lastAlarm: stateToClone.lastAlarm ? { ...stateToClone.lastAlarm } : null,
       roundScores: (stateToClone.roundScores || [0, 0, 0]).slice(),
+      totalScores: (stateToClone.totalScores || [0, 0, 0]).slice(),
       settlement: stateToClone.settlement
-        ? { ...stateToClone.settlement, roundScores: stateToClone.settlement.roundScores.slice() }
+        ? {
+          ...stateToClone.settlement,
+          roundScores: stateToClone.settlement.roundScores.slice(),
+          totalScores: stateToClone.settlement.totalScores.slice(),
+        }
         : null,
     };
   }
@@ -615,6 +621,7 @@
       spring: null,
       winnerSide: null,
       roundScores: [0, 0, 0],
+      totalScores: (options.totalScores || [0, 0, 0]).slice(),
       settlement: null,
       message: '\u8bf7\u9009\u62e9\u662f\u5426\u53eb\u5730\u4e3b',
     };
@@ -677,12 +684,14 @@
       }
       return landlordWon ? -unitScore : unitScore;
     });
+    currentState.totalScores = currentState.totalScores.map((score, index) => score + currentState.roundScores[index]);
     currentState.settlement = {
       baseScore: currentState.baseScore,
       multiplier: currentState.multiplier,
       winnerSide: currentState.winnerSide,
       spring: currentState.spring,
       roundScores: currentState.roundScores.slice(),
+      totalScores: currentState.totalScores.slice(),
     };
   }
 
@@ -925,6 +934,9 @@
     const summary = document.createElement('p');
     summary.textContent = `\u5e95\u5206 ${currentState.baseScore || 1} \u00b7 \u500d\u6570 ${currentState.multiplier || 1}x \u00b7 \u70b8\u5f39 ${currentState.bombCount || 0} \u00b7 \u738b\u70b8 ${currentState.rocketCount || 0}`;
     wrapper.append(summary);
+    const totals = document.createElement('p');
+    totals.textContent = `\u603b\u5206 ${currentState.seats.map((seat, index) => `${seat.name} ${currentState.totalScores[index] > 0 ? '+' : ''}${currentState.totalScores[index]}`).join(' / ')}`;
+    wrapper.append(totals);
     if (currentState.settlement) {
       const settlement = document.createElement('p');
       settlement.textContent = `\u7ed3\u7b97 ${currentState.seats.map((seat, index) => `${seat.name} ${currentState.roundScores[index] > 0 ? '+' : ''}${currentState.roundScores[index]}`).join(' / ')} \u00b7 ${springLabel(currentState.spring)}`;
@@ -1016,7 +1028,7 @@
   function newRound() {
     playSound('new', '\u53d1\u724c');
     aiTurnToken += 1;
-    setState(createGame());
+    setState(createGame({ totalScores: state.totalScores }));
   }
 
   function playBidSound(wantsLandlord, currentState = state) {

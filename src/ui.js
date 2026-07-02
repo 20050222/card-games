@@ -138,6 +138,10 @@ function renderRoundStats(state) {
   summary.textContent = `\u5e95\u5206 ${state.baseScore || 1} \u00b7 \u500d\u6570 ${state.multiplier || 1}x \u00b7 \u70b8\u5f39 ${state.bombCount || 0} \u00b7 \u738b\u70b8 ${state.rocketCount || 0}`;
   wrapper.append(summary);
 
+  const totals = document.createElement('p');
+  totals.textContent = `\u603b\u5206 ${state.seats.map((seat, index) => `${seat.name} ${state.totalScores[index] > 0 ? '+' : ''}${state.totalScores[index]}`).join(' / ')}`;
+  wrapper.append(totals);
+
   if (state.settlement) {
     const settlement = document.createElement('p');
     settlement.textContent = `\u7ed3\u7b97 ${state.seats.map((seat, index) => `${seat.name} ${state.roundScores[index] > 0 ? '+' : ''}${state.roundScores[index]}`).join(' / ')} \u00b7 ${springLabel(state.spring)}`;

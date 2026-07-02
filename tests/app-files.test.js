@@ -28,5 +28,6 @@ export function run() {
   assert(browserApp.includes('totalScores'), 'browser bundle keeps cumulative match scores across rounds');
   assert(browserApp.includes('spring'), 'browser bundle supports spring and anti-spring');
   assert(browserApp.includes('lastAlarm'), 'browser bundle supports one-card/two-card alarms');
+  assert(browserApp.includes('finalRobPending'), 'browser bundle gives the first caller a final rob chance');
   assert(html.includes('soundToggleButton'), 'index exposes a sound toggle button');
 }

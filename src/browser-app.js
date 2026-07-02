@@ -602,10 +602,13 @@
       bottomRevealed: false,
       landlord: null,
       landlordCandidate: null,
+      landlordStarter: null,
       activeSeat: 0,
       bids: [],
       bidPasses: 0,
       biddingTurns: 0,
+      robTurns: 0,
+      finalRobPending: false,
       baseScore: 1,
       multiplier: 1,
       bidMultiplier: 1,
@@ -632,7 +635,9 @@
     next.phase = 'playing';
     next.landlord = landlordIndex;
     next.landlordCandidate = landlordIndex;
+    next.landlordStarter = next.landlordStarter ?? landlordIndex;
     next.activeSeat = landlordIndex;
+    next.finalRobPending = false;
     next.bottomRevealed = true;
     next.seats = next.seats.map((seat, index) => ({
       ...seat,
@@ -711,6 +716,7 @@
     }
     const next = cloneState(currentState);
     const isRobbing = next.landlordCandidate !== null;
+    const isFinalRobDecision = next.finalRobPending && seatIndex === next.landlordStarter;
     const action = isRobbing
       ? wantsLandlord ? 'rob' : 'passRob'
       : wantsLandlord ? 'call' : 'passCall';
@@ -719,32 +725,49 @@
     next.biddingTurns += 1;
 
     if (wantsLandlord) {
+      if (!isRobbing) {
+        next.landlordStarter = seatIndex;
+      }
       next.landlordCandidate = seatIndex;
       if (isRobbing) {
         applyRobMultiplier(next);
       }
-    } else if (!isRobbing) {
-      next.bidPasses += 1;
     }
 
-    if (next.landlordCandidate === null && next.biddingTurns >= 3) {
-      return { ...createGame(next.dealOptions), message: '\u6240\u6709\u73a9\u5bb6\u4e0d\u53eb\uff0c\u91cd\u65b0\u53d1\u724c' };
+    if (!isRobbing) {
+      if (!wantsLandlord) {
+        next.bidPasses += 1;
+        if (next.bidPasses >= 3) {
+          return { ...createGame(next.dealOptions), message: '\u6240\u6709\u73a9\u5bb6\u4e0d\u53eb\uff0c\u91cd\u65b0\u53d1\u724c' };
+        }
+      }
+
+      next.activeSeat = nextSeat(seatIndex);
+      next.message = wantsLandlord
+        ? `${next.seats[seatIndex].name} \u53eb\u5730\u4e3b\uff0c\u5176\u4ed6\u73a9\u5bb6\u53ef\u4ee5\u62a2\u5730\u4e3b`
+        : `${next.seats[seatIndex].name} \u4e0d\u53eb`;
+      return next;
     }
 
-    if (next.landlordCandidate !== null && next.biddingTurns >= 3) {
+    if (isFinalRobDecision) {
+      return finalizeLandlord(next, next.landlordCandidate);
+    }
+
+    next.robTurns += 1;
+    if (next.robTurns >= 2) {
+      if (next.landlordCandidate !== next.landlordStarter) {
+        next.finalRobPending = true;
+        next.activeSeat = next.landlordStarter;
+        next.message = `${next.seats[next.landlordStarter].name} \u53ef\u4ee5\u9009\u62e9\u662f\u5426\u62a2\u56de\u5730\u4e3b`;
+        return next;
+      }
       return finalizeLandlord(next, next.landlordCandidate);
     }
 
     next.activeSeat = nextSeat(seatIndex);
-    if (wantsLandlord) {
-      next.message = isRobbing
-        ? `${next.seats[seatIndex].name} \u62a2\u5730\u4e3b`
-        : `${next.seats[seatIndex].name} \u53eb\u5730\u4e3b\uff0c\u5176\u4ed6\u73a9\u5bb6\u53ef\u4ee5\u62a2\u5730\u4e3b`;
-    } else {
-      next.message = isRobbing
-        ? `${next.seats[seatIndex].name} \u4e0d\u62a2`
-        : `${next.seats[seatIndex].name} \u4e0d\u53eb`;
-    }
+    next.message = wantsLandlord
+      ? `${next.seats[seatIndex].name} \u62a2\u5730\u4e3b`
+      : `${next.seats[seatIndex].name} \u4e0d\u62a2`;
     return next;
   }
 

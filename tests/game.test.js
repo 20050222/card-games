@@ -61,9 +61,22 @@ export function run() {
   const robbed = bid(robStart, 1, true);
   assert.strictEqual(robbed.bidMultiplier, 2, 'rob landlord doubles bidding multiplier');
   assert.strictEqual(robbed.multiplier, 2, 'rob landlord doubles round multiplier');
-  const robbedFinal = bid(robbed, 2, false);
+  const finalChance = bid(robbed, 2, false);
+  assert.strictEqual(finalChance.phase, 'bidding', 'first caller gets a final rob chance after being robbed');
+  assert.strictEqual(finalChance.activeSeat, 0);
+  assert.strictEqual(finalChance.landlordCandidate, 1);
+  assert.strictEqual(finalChance.seats[0].hand.length, 17, 'bottom cards stay hidden before final rob decision');
+
+  const reRobbedFinal = bid(finalChance, 0, true);
+  assert.strictEqual(reRobbedFinal.phase, 'playing');
+  assert.strictEqual(reRobbedFinal.landlord, 0, 'first caller can rob landlord back on the final chance');
+  assert.strictEqual(reRobbedFinal.seats[0].hand.length, 20);
+  assert.strictEqual(reRobbedFinal.multiplier, 4, 'final rob doubles multiplier again');
+
+  const finalPassChance = bid(robbed, 2, false);
+  const robbedFinal = bid(finalPassChance, 0, false);
   assert.strictEqual(robbedFinal.phase, 'playing');
-  assert.strictEqual(robbedFinal.landlord, 1, 'AI can rob landlord from the first caller');
+  assert.strictEqual(robbedFinal.landlord, 1, 'robber becomes landlord when first caller declines final chance');
   assert.strictEqual(robbedFinal.seats[1].hand.length, 20);
   assert.strictEqual(robbedFinal.multiplier, 2);
 

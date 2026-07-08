@@ -10,10 +10,13 @@ export function run() {
   const css = fs.readFileSync('styles.css', 'utf8');
   assert(css.includes('.card-table'), 'styles include card table');
   assert(css.includes('.playing-card'), 'styles include playing cards');
-  assert(css.includes('.play-history'), 'styles include play history panel');
+  assert(!css.includes('.play-history'), 'action history is not shown as a center table panel');
+  assert(css.includes('.bottom-cards') && css.includes('top: 14px'), 'bottom cards are pinned near the top edge');
+  assert(css.includes('.last-play') && css.includes('translate(-50%, -50%)'), 'last play is centered on the table');
 
   const ui = fs.readFileSync('src/ui.js', 'utf8');
   assert(ui.includes('renderGame'), 'ui exports renderGame');
+  assert(!ui.includes('renderPlayHistory'), 'ui does not render a visible action history panel');
 
   const browserApp = fs.readFileSync('src/browser-app.js', 'utf8');
   assert(browserApp.includes('startGame'), 'browser bundle starts the game');
@@ -31,7 +34,8 @@ export function run() {
   assert(browserApp.includes('lastAlarm'), 'browser bundle supports one-card/two-card alarms');
   assert(browserApp.includes('finalRobPending'), 'browser bundle gives the first caller a final rob chance');
   assert(browserApp.includes('findHints'), 'browser bundle supports cycling through multiple hints');
-  assert(browserApp.includes('playHistory'), 'browser bundle records visible action history');
+  assert(browserApp.includes('playHistory'), 'browser bundle still keeps internal action history');
+  assert(!browserApp.includes('renderPlayHistory'), 'browser bundle does not render visible action history');
   assert(browserApp.includes('teammateIsWinning'), 'browser bundle AI can avoid beating farmer teammates');
   assert(html.includes('soundToggleButton'), 'index exposes a sound toggle button');
 }

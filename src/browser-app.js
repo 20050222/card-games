@@ -994,36 +994,6 @@
     return wrapper;
   }
 
-  function actionLabel(entry) {
-    const labels = {
-      call: '\u53eb\u5730\u4e3b',
-      passCall: '\u4e0d\u53eb',
-      rob: '\u62a2\u5730\u4e3b',
-      passRob: '\u4e0d\u62a2',
-    };
-    if (entry.type === 'bid') return labels[entry.action] || '\u53eb\u724c';
-    if (entry.type === 'pass') return '\u4e0d\u51fa';
-    if (entry.type === 'play') return `\u51fa\u724c\u00b7${entry.playType}`;
-    return '\u64cd\u4f5c';
-  }
-
-  function renderPlayHistory(currentState) {
-    const wrapper = document.createElement('section');
-    wrapper.className = 'play-history';
-    const title = document.createElement('h2');
-    title.textContent = '\u8bb0\u5f55';
-    wrapper.append(title);
-
-    const list = document.createElement('ol');
-    for (const entry of currentState.playHistory.slice(-6).reverse()) {
-      const item = document.createElement('li');
-      item.textContent = `${currentState.seats[entry.seatIndex].name} ${actionLabel(entry)}`;
-      list.append(item);
-    }
-    wrapper.append(list);
-    return wrapper;
-  }
-
   function renderLastPlay(currentState) {
     const wrapper = document.createElement('section');
     wrapper.className = 'last-play';
@@ -1048,18 +1018,12 @@
     const status = document.querySelector('#statusText');
     root.innerHTML = '';
     status.textContent = currentState.message;
-    const center = document.createElement('div');
-    center.className = 'table-center';
-    center.append(
+    root.append(
       renderBottomCards(currentState),
       renderRoundStats(currentState),
-      renderPlayHistory(currentState),
       renderLastPlay(currentState),
-    );
-    root.append(
       renderSeat(currentState.seats[1], 1, currentState, handlers),
       renderSeat(currentState.seats[2], 2, currentState, handlers),
-      center,
       renderSeat(currentState.seats[0], 0, currentState, handlers),
     );
   }

@@ -33,6 +33,7 @@ export function run() {
   assert.strictEqual(game.bottomCards.length, 3);
   assert.strictEqual(game.bottomRevealed, false, 'bottom cards stay hidden during bidding');
   assert.deepStrictEqual(game.totalScores, [0, 0, 0], 'new match starts with zero total scores');
+  assert.deepStrictEqual(game.playHistory, [], 'new round starts with empty action history');
 
   const carriedScoreGame = createGame({ deck, totalScores: [12, -4, -8] });
   assert.deepStrictEqual(carriedScoreGame.totalScores, [12, -4, -8], 'new round can carry match totals');
@@ -44,6 +45,12 @@ export function run() {
   assert.strictEqual(firstCaller.activeSeat, 1);
   assert.strictEqual(firstCaller.seats[0].hand.length, 17);
   assert.strictEqual(firstCaller.bottomRevealed, false);
+  assert.deepStrictEqual(firstCaller.playHistory[firstCaller.playHistory.length - 1], {
+    type: 'bid',
+    seatIndex: 0,
+    action: 'call',
+    wantsLandlord: true,
+  });
 
   const afterFirstRobPass = bid(firstCaller, 1, false);
   assert.strictEqual(afterFirstRobPass.phase, 'bidding');
@@ -108,11 +115,17 @@ export function run() {
   assert(afterPlay.lastPlay, 'last play is recorded');
   assert.strictEqual(afterPlay.playActionCounts[0], 1, 'successful plays are counted by seat');
   assert.strictEqual(afterPlay.playedCardCounts[0], 1, 'played cards are counted by seat');
+  assert.strictEqual(afterPlay.playHistory[afterPlay.playHistory.length - 1].type, 'play');
+  assert.strictEqual(afterPlay.playHistory[afterPlay.playHistory.length - 1].playType, 'single');
 
   const afterPassOne = passTurn(afterPlay, 1);
   assert.strictEqual(afterPassOne.passCount, 1);
   assert.strictEqual(afterPassOne.activeSeat, 2);
   assert.notStrictEqual(afterPassOne.lastPlay.cards, afterPlay.lastPlay.cards);
+  assert.deepStrictEqual(afterPassOne.playHistory[afterPassOne.playHistory.length - 1], {
+    type: 'pass',
+    seatIndex: 1,
+  });
 
   const afterPassTwo = passTurn(afterPassOne, 2);
   assert.strictEqual(afterPassTwo.passCount, 0, 'two passes clear trick pass count');

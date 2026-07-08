@@ -179,13 +179,22 @@ function buildBasicCandidates(hand) {
 }
 
 export function findHint(hand, lastPlay) {
-  const candidates = buildBasicCandidates(hand);
-  const target = Array.isArray(lastPlay) ? evaluatePlay(lastPlay) : lastPlay;
-  const match = candidates.find((candidate) => canBeat(candidate.play, target));
-  return match ? match.cards : null;
+  const hints = findHints(hand, lastPlay);
+  return hints[0] || null;
 }
 
-export function choosePlay(hand, lastPlay) {
+export function findHints(hand, lastPlay) {
+  const candidates = buildBasicCandidates(hand);
+  const target = Array.isArray(lastPlay) ? evaluatePlay(lastPlay) : lastPlay;
+  return candidates
+    .filter((candidate) => canBeat(candidate.play, target))
+    .map((candidate) => candidate.cards);
+}
+
+export function choosePlay(hand, lastPlay, options = {}) {
+  if (options.teammateIsWinning && lastPlay) {
+    return { pass: true, cards: [] };
+  }
   const target = Array.isArray(lastPlay) ? evaluatePlay(lastPlay) : lastPlay;
   const cards = findHint(hand, target);
   if (!cards) {

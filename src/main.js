@@ -1,4 +1,4 @@
-import { chooseBid, choosePlay, findHint } from './ai.js';
+import { chooseBid, choosePlay, findHints } from './ai.js';
 import { bid, createGame, passTurn, playCards, selectCardsByIds } from './game.js';
 import { renderGame } from './ui.js';
 
@@ -30,7 +30,7 @@ function toggleCard(cardId) {
   } else {
     selected.add(cardId);
   }
-  state = { ...state, selectedIds: [...selected] };
+  state = { ...state, selectedIds: [...selected], hintCursor: 0 };
   render();
 }
 
@@ -45,15 +45,28 @@ function passSelected() {
 
 function hint() {
   const target = state.lastPlay ? state.lastPlay.play : null;
-  const cards = findHint(state.seats[0].hand, target);
+  const hints = findHints(state.seats[0].hand, target);
+  const hintIndex = hints.length ? state.hintCursor % hints.length : 0;
+  const cards = hints[hintIndex] || null;
   state = {
     ...state,
     selectedIds: cards ? cards.map((card) => card.id) : [],
+    hintCursor: cards ? hintIndex + 1 : 0,
     message: cards
-      ? '\u5df2\u4e3a\u4f60\u9009\u51fa\u4e00\u624b\u724c'
+      ? `\u63d0\u793a ${hintIndex + 1}/${hints.length}\uff1a\u5df2\u4e3a\u4f60\u9009\u51fa\u4e00\u624b\u724c`
       : '\u6ca1\u6709\u53ef\u538b\u8fc7\u7684\u724c',
   };
   render();
+}
+
+function teammateIsWinning(seatIndex) {
+  return Boolean(
+    state.lastPlay
+    && state.landlord !== null
+    && seatIndex !== state.landlord
+    && state.lastPlay.seatIndex !== state.landlord
+    && state.lastPlay.seatIndex !== seatIndex,
+  );
 }
 
 function newRound() {
@@ -82,7 +95,9 @@ function queueAiTurn() {
       }
       const seat = state.activeSeat;
       const target = state.lastPlay ? state.lastPlay.play : null;
-      const decision = choosePlay(state.seats[seat].hand, target);
+      const decision = choosePlay(state.seats[seat].hand, target, {
+        teammateIsWinning: teammateIsWinning(seat),
+      });
       setState(decision.pass ? passTurn(state, seat) : playCards(state, seat, decision.cards));
     }, 700);
   }

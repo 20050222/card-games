@@ -151,6 +151,36 @@ function renderRoundStats(state) {
   return wrapper;
 }
 
+function actionLabel(entry) {
+  const labels = {
+    call: '\u53eb\u5730\u4e3b',
+    passCall: '\u4e0d\u53eb',
+    rob: '\u62a2\u5730\u4e3b',
+    passRob: '\u4e0d\u62a2',
+  };
+  if (entry.type === 'bid') return labels[entry.action] || '\u53eb\u724c';
+  if (entry.type === 'pass') return '\u4e0d\u51fa';
+  if (entry.type === 'play') return `\u51fa\u724c\u00b7${entry.playType}`;
+  return '\u64cd\u4f5c';
+}
+
+function renderPlayHistory(state) {
+  const wrapper = document.createElement('section');
+  wrapper.className = 'play-history';
+  const title = document.createElement('h2');
+  title.textContent = '\u8bb0\u5f55';
+  wrapper.append(title);
+
+  const list = document.createElement('ol');
+  for (const entry of state.playHistory.slice(-6).reverse()) {
+    const item = document.createElement('li');
+    item.textContent = `${state.seats[entry.seatIndex].name} ${actionLabel(entry)}`;
+    list.append(item);
+  }
+  wrapper.append(list);
+  return wrapper;
+}
+
 function renderLastPlay(state) {
   const wrapper = document.createElement('section');
   wrapper.className = 'last-play';
@@ -179,7 +209,7 @@ export function renderGame(state, handlers) {
 
   const center = document.createElement('div');
   center.className = 'table-center';
-  center.append(renderBottomCards(state), renderRoundStats(state), renderLastPlay(state));
+  center.append(renderBottomCards(state), renderRoundStats(state), renderPlayHistory(state), renderLastPlay(state));
 
   root.append(
     renderSeat(state.seats[1], 1, state, handlers),

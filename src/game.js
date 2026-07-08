@@ -37,6 +37,7 @@ function cloneState(state) {
     seats: state.seats.map((seat) => ({ ...seat, hand: seat.hand.slice() })),
     bottomCards: state.bottomCards.slice(),
     bids: state.bids.slice(),
+    playHistory: (state.playHistory || []).map((entry) => ({ ...entry })),
     playActionCounts: (state.playActionCounts || [0, 0, 0]).slice(),
     playedCardCounts: (state.playedCardCounts || [0, 0, 0]).slice(),
     selectedIds: state.selectedIds.slice(),
@@ -89,14 +90,20 @@ export function createGame(options = {}) {
     lastPlay: null,
     passCount: 0,
     selectedIds: [],
+    hintCursor: 0,
     lastAlarm: null,
     spring: null,
     winnerSide: null,
     roundScores: [0, 0, 0],
     totalScores: (options.totalScores || [0, 0, 0]).slice(),
     settlement: null,
+    playHistory: [],
     message: '\u8bf7\u9009\u62e9\u662f\u5426\u53eb\u5730\u4e3b',
   };
+}
+
+function appendHistory(state, entry) {
+  state.playHistory = state.playHistory.concat({ ...entry }).slice(-24);
 }
 
 function finalizeLandlord(state, landlordIndex) {
@@ -193,6 +200,7 @@ export function bid(state, seatIndex, wantsLandlord) {
     : wantsLandlord ? 'call' : 'passCall';
 
   next.bids.push({ seatIndex, wantsLandlord, action });
+  appendHistory(next, { type: 'bid', seatIndex, action, wantsLandlord });
   next.biddingTurns += 1;
 
   if (wantsLandlord) {
@@ -280,8 +288,15 @@ export function playCards(state, seatIndex, cards) {
   next.lastPlay = { seatIndex, play, cards: sortCards(cards) };
   next.passCount = 0;
   next.selectedIds = [];
+  next.hintCursor = 0;
   next.playActionCounts[seatIndex] += 1;
   next.playedCardCounts[seatIndex] += cards.length;
+  appendHistory(next, {
+    type: 'play',
+    seatIndex,
+    playType: play.type,
+    cardCount: cards.length,
+  });
   applyPlayMultiplier(next, play);
 
   if (next.seats[seatIndex].hand.length === 0) {
@@ -309,8 +324,10 @@ export function passTurn(state, seatIndex) {
   const next = cloneState(state);
   next.passCount += 1;
   next.selectedIds = [];
+  next.hintCursor = 0;
   next.activeSeat = nextSeat(seatIndex);
   next.message = `${next.seats[seatIndex].name} \u4e0d\u51fa`;
+  appendHistory(next, { type: 'pass', seatIndex });
 
   if (next.passCount >= 2) {
     next.passCount = 0;

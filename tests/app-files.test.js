@@ -10,6 +10,7 @@ export function run() {
   const css = fs.readFileSync('styles.css', 'utf8');
   assert(css.includes('.card-table'), 'styles include card table');
   assert(css.includes('.playing-card'), 'styles include playing cards');
+  assert(css.includes('.play-history'), 'styles include play history panel');
 
   const ui = fs.readFileSync('src/ui.js', 'utf8');
   assert(ui.includes('renderGame'), 'ui exports renderGame');
@@ -29,5 +30,8 @@ export function run() {
   assert(browserApp.includes('spring'), 'browser bundle supports spring and anti-spring');
   assert(browserApp.includes('lastAlarm'), 'browser bundle supports one-card/two-card alarms');
   assert(browserApp.includes('finalRobPending'), 'browser bundle gives the first caller a final rob chance');
+  assert(browserApp.includes('findHints'), 'browser bundle supports cycling through multiple hints');
+  assert(browserApp.includes('playHistory'), 'browser bundle records visible action history');
+  assert(browserApp.includes('teammateIsWinning'), 'browser bundle AI can avoid beating farmer teammates');
   assert(html.includes('soundToggleButton'), 'index exposes a sound toggle button');
 }

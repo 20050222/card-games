@@ -529,13 +529,22 @@
   }
 
   function findHint(hand, lastPlay) {
-    const candidates = buildBasicCandidates(hand);
-    const target = Array.isArray(lastPlay) ? evaluatePlay(lastPlay) : lastPlay;
-    const match = candidates.find((candidate) => canBeat(candidate.play, target));
-    return match ? match.cards : null;
+    const hints = findHints(hand, lastPlay);
+    return hints[0] || null;
   }
 
-  function choosePlay(hand, lastPlay) {
+  function findHints(hand, lastPlay) {
+    const candidates = buildBasicCandidates(hand);
+    const target = Array.isArray(lastPlay) ? evaluatePlay(lastPlay) : lastPlay;
+    return candidates
+      .filter((candidate) => canBeat(candidate.play, target))
+      .map((candidate) => candidate.cards);
+  }
+
+  function choosePlay(hand, lastPlay, options = {}) {
+    if (options.teammateIsWinning && lastPlay) {
+      return { pass: true, cards: [] };
+    }
     const target = Array.isArray(lastPlay) ? evaluatePlay(lastPlay) : lastPlay;
     const cards = findHint(hand, target);
     if (!cards) {
@@ -572,6 +581,7 @@
       seats: stateToClone.seats.map((seat) => ({ ...seat, hand: seat.hand.slice() })),
       bottomCards: stateToClone.bottomCards.slice(),
       bids: stateToClone.bids.slice(),
+      playHistory: (stateToClone.playHistory || []).map((entry) => ({ ...entry })),
       playActionCounts: (stateToClone.playActionCounts || [0, 0, 0]).slice(),
       playedCardCounts: (stateToClone.playedCardCounts || [0, 0, 0]).slice(),
       selectedIds: stateToClone.selectedIds.slice(),
@@ -620,14 +630,20 @@
       lastPlay: null,
       passCount: 0,
       selectedIds: [],
+      hintCursor: 0,
       lastAlarm: null,
       spring: null,
       winnerSide: null,
       roundScores: [0, 0, 0],
       totalScores: (options.totalScores || [0, 0, 0]).slice(),
       settlement: null,
+      playHistory: [],
       message: '\u8bf7\u9009\u62e9\u662f\u5426\u53eb\u5730\u4e3b',
     };
+  }
+
+  function appendHistory(currentState, entry) {
+    currentState.playHistory = currentState.playHistory.concat({ ...entry }).slice(-24);
   }
 
   function finalizeLandlord(currentState, landlordIndex) {
@@ -722,6 +738,7 @@
       : wantsLandlord ? 'call' : 'passCall';
 
     next.bids.push({ seatIndex, wantsLandlord, action });
+    appendHistory(next, { type: 'bid', seatIndex, action, wantsLandlord });
     next.biddingTurns += 1;
 
     if (wantsLandlord) {
@@ -794,8 +811,15 @@
     next.lastPlay = { seatIndex, play, cards: sortCards(cards) };
     next.passCount = 0;
     next.selectedIds = [];
+    next.hintCursor = 0;
     next.playActionCounts[seatIndex] += 1;
     next.playedCardCounts[seatIndex] += cards.length;
+    appendHistory(next, {
+      type: 'play',
+      seatIndex,
+      playType: play.type,
+      cardCount: cards.length,
+    });
     applyPlayMultiplier(next, play);
     if (next.seats[seatIndex].hand.length === 0) {
       next.phase = 'gameOver';
@@ -820,8 +844,10 @@
     const next = cloneState(currentState);
     next.passCount += 1;
     next.selectedIds = [];
+    next.hintCursor = 0;
     next.activeSeat = nextSeat(seatIndex);
     next.message = `${next.seats[seatIndex].name} \u4e0d\u51fa`;
+    appendHistory(next, { type: 'pass', seatIndex });
     if (next.passCount >= 2) {
       next.passCount = 0;
       next.lastPlay = null;
@@ -968,6 +994,36 @@
     return wrapper;
   }
 
+  function actionLabel(entry) {
+    const labels = {
+      call: '\u53eb\u5730\u4e3b',
+      passCall: '\u4e0d\u53eb',
+      rob: '\u62a2\u5730\u4e3b',
+      passRob: '\u4e0d\u62a2',
+    };
+    if (entry.type === 'bid') return labels[entry.action] || '\u53eb\u724c';
+    if (entry.type === 'pass') return '\u4e0d\u51fa';
+    if (entry.type === 'play') return `\u51fa\u724c\u00b7${entry.playType}`;
+    return '\u64cd\u4f5c';
+  }
+
+  function renderPlayHistory(currentState) {
+    const wrapper = document.createElement('section');
+    wrapper.className = 'play-history';
+    const title = document.createElement('h2');
+    title.textContent = '\u8bb0\u5f55';
+    wrapper.append(title);
+
+    const list = document.createElement('ol');
+    for (const entry of currentState.playHistory.slice(-6).reverse()) {
+      const item = document.createElement('li');
+      item.textContent = `${currentState.seats[entry.seatIndex].name} ${actionLabel(entry)}`;
+      list.append(item);
+    }
+    wrapper.append(list);
+    return wrapper;
+  }
+
   function renderLastPlay(currentState) {
     const wrapper = document.createElement('section');
     wrapper.className = 'last-play';
@@ -994,7 +1050,12 @@
     status.textContent = currentState.message;
     const center = document.createElement('div');
     center.className = 'table-center';
-    center.append(renderBottomCards(currentState), renderRoundStats(currentState), renderLastPlay(currentState));
+    center.append(
+      renderBottomCards(currentState),
+      renderRoundStats(currentState),
+      renderPlayHistory(currentState),
+      renderLastPlay(currentState),
+    );
     root.append(
       renderSeat(currentState.seats[1], 1, currentState, handlers),
       renderSeat(currentState.seats[2], 2, currentState, handlers),
@@ -1013,7 +1074,7 @@
     const selected = new Set(state.selectedIds);
     if (selected.has(cardId)) selected.delete(cardId);
     else selected.add(cardId);
-    state = { ...state, selectedIds: [...selected] };
+    state = { ...state, selectedIds: [...selected], hintCursor: 0 };
     renderGame(state);
   }
 
@@ -1024,6 +1085,8 @@
     } else if (nextState.lastPlay !== state.lastPlay) {
       playSoundForPlay(nextState.lastPlay.play);
       playAlarmSound(nextState);
+    } else if (nextState.message !== state.message) {
+      playSound('pass', '\u65e0\u6548\u51fa\u724c');
     }
     setState(nextState);
   }
@@ -1038,12 +1101,17 @@
 
   function hint() {
     const target = state.lastPlay ? state.lastPlay.play : null;
-    const cards = findHint(state.seats[0].hand, target);
+    const hints = findHints(state.seats[0].hand, target);
+    const hintIndex = hints.length ? state.hintCursor % hints.length : 0;
+    const cards = hints[hintIndex] || null;
     playSound(cards ? 'hint' : 'pass', cards ? '\u63d0\u793a' : '\u4e0d\u8981');
     state = {
       ...state,
       selectedIds: cards ? cards.map((card) => card.id) : [],
-      message: cards ? '\u5df2\u4e3a\u4f60\u9009\u51fa\u4e00\u624b\u724c' : '\u6ca1\u6709\u53ef\u538b\u8fc7\u7684\u724c',
+      hintCursor: cards ? hintIndex + 1 : 0,
+      message: cards
+        ? `\u63d0\u793a ${hintIndex + 1}/${hints.length}\uff1a\u5df2\u4e3a\u4f60\u9009\u51fa\u4e00\u624b\u724c`
+        : '\u6ca1\u6709\u53ef\u538b\u8fc7\u7684\u724c',
     };
     renderGame(state);
   }
@@ -1063,6 +1131,16 @@
     }
   }
 
+  function teammateIsWinning(seatIndex) {
+    return Boolean(
+      state.lastPlay
+      && state.landlord !== null
+      && seatIndex !== state.landlord
+      && state.lastPlay.seatIndex !== state.landlord
+      && state.lastPlay.seatIndex !== seatIndex,
+    );
+  }
+
   function queueAiTurn() {
     aiTurnToken += 1;
     const token = aiTurnToken;
@@ -1080,7 +1158,9 @@
         if (token !== aiTurnToken || state.phase !== 'playing' || state.activeSeat === 0) return;
         const seat = state.activeSeat;
         const target = state.lastPlay ? state.lastPlay.play : null;
-        const decision = choosePlay(state.seats[seat].hand, target);
+        const decision = choosePlay(state.seats[seat].hand, target, {
+          teammateIsWinning: teammateIsWinning(seat),
+        });
         const nextState = decision.pass ? passTurn(state, seat) : playCards(state, seat, decision.cards);
         if (nextState.phase === 'gameOver' && state.phase !== 'gameOver') {
           playSound('win', settlementCue(nextState));

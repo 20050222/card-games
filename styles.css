@@ -185,7 +185,7 @@ button {
   position: absolute;
   inset: 190px 18% 230px;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto auto 1fr;
   gap: 14px;
   align-items: center;
   justify-items: center;
@@ -220,6 +220,39 @@ button {
   color: #fff8e8;
   font-size: 13px;
   font-weight: 700;
+}
+
+.play-history {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  max-width: min(520px, 64vw);
+  padding: 8px 12px;
+  border-radius: 7px;
+  background: rgba(7, 18, 15, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.play-history h2 {
+  margin: 0;
+  color: #d9e0d4;
+  font-size: 13px;
+}
+
+.play-history ol {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.play-history li {
+  color: #fff8e8;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .last-play {
